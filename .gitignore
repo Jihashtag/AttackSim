@@ -1,0 +1,14 @@
+# security_test toolkit artifacts
+report/last_run.json
+report/*.md
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# CVE auto-pwn audit logs (generated at runtime, not source)
+data/cve/audit_log/*.json
+../../osint/osaa/.gitignore
+__pycache__/*
+*/__pycache__/
+*/*/__pycache__/

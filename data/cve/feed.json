@@ -1,0 +1,117 @@
+{
+    "_about": "Bundled OFFLINE CVE subset for product+version enrichment. This is a small, PINNED, illustrative feed shipped with the toolkit so enrichment works with no network and no extra runtime dependency. Replace/extend it with a full OSV or NVD mirror (same record shape) for production use. AUTHORIZED-ASSESSMENT data — safe to delete.",
+    "_schema": {
+        "product": "lowercase product name matched against service banners/version strings",
+        "vendor": "informational",
+        "ranges": "list of {introduced, fixed}; a version V is affected if introduced<=V<fixed (either bound may be omitted)",
+        "cve": "CVE identifier",
+        "severity": "CRITICAL|HIGH|MEDIUM|LOW",
+        "cvss": "base score (informational)",
+        "summary": "one-line description",
+        "references": "advisory URLs"
+    },
+    "records": [
+        {
+            "product": "openssh",
+            "vendor": "OpenBSD",
+            "ranges": [
+                {
+                    "introduced": "0",
+                    "fixed": "9.3.0.2"
+                }
+            ],
+            "cve": "CVE-2023-38408",
+            "severity": "CRITICAL",
+            "cvss": 9.8,
+            "summary": "ssh-agent PKCS#11 remote code execution via forwarded agent.",
+            "references": [
+                "https://nvd.nist.gov/vuln/detail/CVE-2023-38408"
+            ]
+        },
+        {
+            "product": "openssh",
+            "vendor": "OpenBSD",
+            "ranges": [
+                {
+                    "introduced": "8.5",
+                    "fixed": "9.8"
+                }
+            ],
+            "cve": "CVE-2024-6387",
+            "severity": "HIGH",
+            "cvss": 8.1,
+            "summary": "regreSSHion: signal-handler race condition enables unauthenticated RCE.",
+            "references": [
+                "https://nvd.nist.gov/vuln/detail/CVE-2024-6387"
+            ]
+        },
+        {
+            "product": "redis",
+            "vendor": "Redis",
+            "ranges": [
+                {
+                    "introduced": "0",
+                    "fixed": "6.2.7"
+                }
+            ],
+            "cve": "CVE-2022-24735",
+            "severity": "HIGH",
+            "cvss": 7.0,
+            "summary": "Lua script sandbox escape allowing code execution in the Redis process.",
+            "references": [
+                "https://nvd.nist.gov/vuln/detail/CVE-2022-24735"
+            ]
+        },
+        {
+            "product": "nginx",
+            "vendor": "F5",
+            "ranges": [
+                {
+                    "introduced": "0",
+                    "fixed": "1.21.0"
+                }
+            ],
+            "cve": "CVE-2021-23017",
+            "severity": "HIGH",
+            "cvss": 7.7,
+            "summary": "Off-by-one heap write in the DNS resolver can lead to RCE.",
+            "references": [
+                "https://nvd.nist.gov/vuln/detail/CVE-2021-23017"
+            ]
+        },
+        {
+            "product": "apache httpd",
+            "vendor": "Apache",
+            "ranges": [
+                {
+                    "introduced": "2.4.49",
+                    "fixed": "2.4.51"
+                }
+            ],
+            "cve": "CVE-2021-42013",
+            "severity": "CRITICAL",
+            "cvss": 9.8,
+            "summary": "Path traversal and RCE via mod_cgi when files outside the doc root are reachable.",
+            "references": [
+                "https://nvd.nist.gov/vuln/detail/CVE-2021-42013"
+            ]
+        },
+        {
+            "product": "openssl",
+            "vendor": "OpenSSL",
+            "ranges": [
+                {
+                    "introduced": "3.0.0",
+                    "fixed": "3.0.7"
+                }
+            ],
+            "cve": "CVE-2022-3602",
+            "severity": "HIGH",
+            "cvss": 7.5,
+            "summary": "X.509 email-address punycode buffer overflow (stack).",
+            "references": [
+                "https://nvd.nist.gov/vuln/detail/CVE-2022-3602"
+            ]
+        }
+    ]
+}

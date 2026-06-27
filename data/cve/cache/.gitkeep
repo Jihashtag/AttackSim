@@ -1,0 +1,2 @@
+# Cache directory for CVE API responses (24h TTL)
+# Auto-populated by cve_resolver.py — safe to delete for fresh lookups

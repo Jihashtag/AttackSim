@@ -1,0 +1,428 @@
+{
+    "_about": "Static CPE alias mapping: common service banners/names → CPE vendor:product pairs. Used by cve_resolver to build accurate NVD queries. Extend this file for additional products.",
+    "openssh": {
+        "vendor": "openbsd",
+        "product": "openssh",
+        "ecosystem": ""
+    },
+    "openssl": {
+        "vendor": "openssl",
+        "product": "openssl",
+        "ecosystem": ""
+    },
+    "nginx": {
+        "vendor": "f5",
+        "product": "nginx",
+        "ecosystem": ""
+    },
+    "apache": {
+        "vendor": "apache",
+        "product": "http_server",
+        "ecosystem": ""
+    },
+    "apache httpd": {
+        "vendor": "apache",
+        "product": "http_server",
+        "ecosystem": ""
+    },
+    "httpd": {
+        "vendor": "apache",
+        "product": "http_server",
+        "ecosystem": ""
+    },
+    "redis": {
+        "vendor": "redis",
+        "product": "redis",
+        "ecosystem": ""
+    },
+    "mysql": {
+        "vendor": "oracle",
+        "product": "mysql",
+        "ecosystem": ""
+    },
+    "mariadb": {
+        "vendor": "mariadb",
+        "product": "mariadb",
+        "ecosystem": ""
+    },
+    "postgresql": {
+        "vendor": "postgresql",
+        "product": "postgresql",
+        "ecosystem": ""
+    },
+    "postgres": {
+        "vendor": "postgresql",
+        "product": "postgresql",
+        "ecosystem": ""
+    },
+    "mongodb": {
+        "vendor": "mongodb",
+        "product": "mongodb",
+        "ecosystem": ""
+    },
+    "elasticsearch": {
+        "vendor": "elastic",
+        "product": "elasticsearch",
+        "ecosystem": ""
+    },
+    "kibana": {
+        "vendor": "elastic",
+        "product": "kibana",
+        "ecosystem": ""
+    },
+    "tomcat": {
+        "vendor": "apache",
+        "product": "tomcat",
+        "ecosystem": ""
+    },
+    "apache tomcat": {
+        "vendor": "apache",
+        "product": "tomcat",
+        "ecosystem": ""
+    },
+    "jetty": {
+        "vendor": "eclipse",
+        "product": "jetty",
+        "ecosystem": ""
+    },
+    "iis": {
+        "vendor": "microsoft",
+        "product": "internet_information_services",
+        "ecosystem": ""
+    },
+    "microsoft-iis": {
+        "vendor": "microsoft",
+        "product": "internet_information_services",
+        "ecosystem": ""
+    },
+    "express": {
+        "vendor": "expressjs",
+        "product": "express",
+        "ecosystem": "npm"
+    },
+    "node.js": {
+        "vendor": "nodejs",
+        "product": "node.js",
+        "ecosystem": ""
+    },
+    "nodejs": {
+        "vendor": "nodejs",
+        "product": "node.js",
+        "ecosystem": ""
+    },
+    "php": {
+        "vendor": "php",
+        "product": "php",
+        "ecosystem": ""
+    },
+    "python": {
+        "vendor": "python",
+        "product": "python",
+        "ecosystem": "PyPI"
+    },
+    "flask": {
+        "vendor": "palletsprojects",
+        "product": "flask",
+        "ecosystem": "PyPI"
+    },
+    "django": {
+        "vendor": "djangoproject",
+        "product": "django",
+        "ecosystem": "PyPI"
+    },
+    "spring": {
+        "vendor": "vmware",
+        "product": "spring_framework",
+        "ecosystem": "Maven"
+    },
+    "spring boot": {
+        "vendor": "vmware",
+        "product": "spring_boot",
+        "ecosystem": "Maven"
+    },
+    "spring-boot": {
+        "vendor": "vmware",
+        "product": "spring_boot",
+        "ecosystem": "Maven"
+    },
+    "wordpress": {
+        "vendor": "wordpress",
+        "product": "wordpress",
+        "ecosystem": ""
+    },
+    "drupal": {
+        "vendor": "drupal",
+        "product": "drupal",
+        "ecosystem": ""
+    },
+    "joomla": {
+        "vendor": "joomla",
+        "product": "joomla\\!",
+        "ecosystem": ""
+    },
+    "grafana": {
+        "vendor": "grafana",
+        "product": "grafana",
+        "ecosystem": ""
+    },
+    "prometheus": {
+        "vendor": "prometheus",
+        "product": "prometheus",
+        "ecosystem": ""
+    },
+    "consul": {
+        "vendor": "hashicorp",
+        "product": "consul",
+        "ecosystem": ""
+    },
+    "vault": {
+        "vendor": "hashicorp",
+        "product": "vault",
+        "ecosystem": ""
+    },
+    "terraform": {
+        "vendor": "hashicorp",
+        "product": "terraform",
+        "ecosystem": ""
+    },
+    "docker": {
+        "vendor": "docker",
+        "product": "docker",
+        "ecosystem": ""
+    },
+    "containerd": {
+        "vendor": "linuxfoundation",
+        "product": "containerd",
+        "ecosystem": ""
+    },
+    "kubernetes": {
+        "vendor": "kubernetes",
+        "product": "kubernetes",
+        "ecosystem": ""
+    },
+    "etcd": {
+        "vendor": "etcd-io",
+        "product": "etcd",
+        "ecosystem": ""
+    },
+    "envoy": {
+        "vendor": "envoyproxy",
+        "product": "envoy",
+        "ecosystem": ""
+    },
+    "istio": {
+        "vendor": "istio",
+        "product": "istio",
+        "ecosystem": ""
+    },
+    "haproxy": {
+        "vendor": "haproxy",
+        "product": "haproxy",
+        "ecosystem": ""
+    },
+    "traefik": {
+        "vendor": "traefik",
+        "product": "traefik",
+        "ecosystem": ""
+    },
+    "rabbitmq": {
+        "vendor": "vmware",
+        "product": "rabbitmq",
+        "ecosystem": ""
+    },
+    "kafka": {
+        "vendor": "apache",
+        "product": "kafka",
+        "ecosystem": ""
+    },
+    "zookeeper": {
+        "vendor": "apache",
+        "product": "zookeeper",
+        "ecosystem": ""
+    },
+    "memcached": {
+        "vendor": "memcached",
+        "product": "memcached",
+        "ecosystem": ""
+    },
+    "vsftpd": {
+        "vendor": "vsftpd_project",
+        "product": "vsftpd",
+        "ecosystem": ""
+    },
+    "proftpd": {
+        "vendor": "proftpd",
+        "product": "proftpd",
+        "ecosystem": ""
+    },
+    "exim": {
+        "vendor": "exim",
+        "product": "exim",
+        "ecosystem": ""
+    },
+    "postfix": {
+        "vendor": "postfix",
+        "product": "postfix",
+        "ecosystem": ""
+    },
+    "dovecot": {
+        "vendor": "dovecot",
+        "product": "dovecot",
+        "ecosystem": ""
+    },
+    "bind": {
+        "vendor": "isc",
+        "product": "bind",
+        "ecosystem": ""
+    },
+    "powerdns": {
+        "vendor": "powerdns",
+        "product": "authoritative_server",
+        "ecosystem": ""
+    },
+    "samba": {
+        "vendor": "samba",
+        "product": "samba",
+        "ecosystem": ""
+    },
+    "gitlab": {
+        "vendor": "gitlab",
+        "product": "gitlab",
+        "ecosystem": ""
+    },
+    "jenkins": {
+        "vendor": "jenkins",
+        "product": "jenkins",
+        "ecosystem": ""
+    },
+    "nexus": {
+        "vendor": "sonatype",
+        "product": "nexus_repository_manager",
+        "ecosystem": ""
+    },
+    "artifactory": {
+        "vendor": "jfrog",
+        "product": "artifactory",
+        "ecosystem": ""
+    },
+    "confluence": {
+        "vendor": "atlassian",
+        "product": "confluence_server",
+        "ecosystem": ""
+    },
+    "jira": {
+        "vendor": "atlassian",
+        "product": "jira",
+        "ecosystem": ""
+    },
+    "bitbucket": {
+        "vendor": "atlassian",
+        "product": "bitbucket",
+        "ecosystem": ""
+    },
+    "sonarqube": {
+        "vendor": "sonarsource",
+        "product": "sonarqube",
+        "ecosystem": ""
+    },
+    "keycloak": {
+        "vendor": "redhat",
+        "product": "keycloak",
+        "ecosystem": ""
+    },
+    "minio": {
+        "vendor": "minio",
+        "product": "minio",
+        "ecosystem": ""
+    },
+    "couchdb": {
+        "vendor": "apache",
+        "product": "couchdb",
+        "ecosystem": ""
+    },
+    "cassandra": {
+        "vendor": "apache",
+        "product": "cassandra",
+        "ecosystem": ""
+    },
+    "solr": {
+        "vendor": "apache",
+        "product": "solr",
+        "ecosystem": ""
+    },
+    "lucene": {
+        "vendor": "apache",
+        "product": "lucene",
+        "ecosystem": ""
+    },
+    "activemq": {
+        "vendor": "apache",
+        "product": "activemq",
+        "ecosystem": ""
+    },
+    "struts": {
+        "vendor": "apache",
+        "product": "struts",
+        "ecosystem": ""
+    },
+    "log4j": {
+        "vendor": "apache",
+        "product": "log4j",
+        "ecosystem": "Maven"
+    },
+    "gunicorn": {
+        "vendor": "gunicorn",
+        "product": "gunicorn",
+        "ecosystem": "PyPI"
+    },
+    "uvicorn": {
+        "vendor": "encode",
+        "product": "uvicorn",
+        "ecosystem": "PyPI"
+    },
+    "caddy": {
+        "vendor": "caddyserver",
+        "product": "caddy",
+        "ecosystem": ""
+    },
+    "varnish": {
+        "vendor": "varnish-software",
+        "product": "varnish_cache",
+        "ecosystem": ""
+    },
+    "squid": {
+        "vendor": "squid-cache",
+        "product": "squid",
+        "ecosystem": ""
+    },
+    "lighttpd": {
+        "vendor": "lighttpd",
+        "product": "lighttpd",
+        "ecosystem": ""
+    },
+    "openresty": {
+        "vendor": "openresty",
+        "product": "openresty",
+        "ecosystem": ""
+    },
+    "wildfly": {
+        "vendor": "redhat",
+        "product": "wildfly",
+        "ecosystem": ""
+    },
+    "jboss": {
+        "vendor": "redhat",
+        "product": "jboss_enterprise_application_platform",
+        "ecosystem": ""
+    },
+    "weblogic": {
+        "vendor": "oracle",
+        "product": "weblogic_server",
+        "ecosystem": ""
+    },
+    "websphere": {
+        "vendor": "ibm",
+        "product": "websphere_application_server",
+        "ecosystem": ""
+    }
+}

@@ -1,0 +1,13 @@
+# Optional enhancements only — the toolkit's core runs on the Python standard
+# library alone and needs NONE of these to function.
+#
+# bcrypt  -> enables the offline password-hash cracking module.
+# passlib -> alternative bcrypt backend if the 'bcrypt' wheel is unavailable.
+bcrypt>=4.0
+passlib>=1.7
+
+# Optional EXTERNAL BINARIES (not Python packages; auto-detected on PATH, the
+# toolkit degrades to a clean INFO skip when they are absent):
+#   nmap    -> nmap-probe: connect-scan service/version detection (+ SAFE NSE only)
+#   nuclei  -> nuclei-probe: known-vulnerability template scan (non-intrusive templates)
+# Offline CVE enrichment uses the bundled data/cve/feed.json — no install required.

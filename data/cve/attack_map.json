@@ -1,0 +1,142 @@
+{
+    "_about": "Bundled OFFLINE mapping from a finding's structural category/tag to MITRE ATT&CK technique id(s). Lets the report tag each weakness with the technique an attacker would use it for, for exec-level reporting and detection alignment. Illustrative subset — extend as needed. AUTHORIZED-ASSESSMENT data — safe to delete.",
+    "techniques": {
+        "T1190": "Exploit Public-Facing Application",
+        "T1133": "External Remote Services",
+        "T1078": "Valid Accounts",
+        "T1110": "Brute Force",
+        "T1212": "Exploitation for Credential Access",
+        "T1552": "Unsecured Credentials",
+        "T1530": "Data from Cloud Storage Object",
+        "T1580": "Cloud Infrastructure Discovery",
+        "T1213": "Data from Information Repositories",
+        "T1505": "Server Software Component",
+        "T1499": "Endpoint Denial of Service",
+        "T1539": "Steal Web Session Cookie",
+        "T1602": "Data from Configuration Repository",
+        "T1556": "Modify Authentication Process",
+        "T1098": "Account Manipulation",
+        "T1610": "Deploy Container",
+        "T1611": "Escape to Host",
+        "T1496": "Resource Hijacking",
+        "T1562": "Impair Defenses"
+    },
+    "by_category": {
+        "api-authz": [
+            "T1190",
+            "T1213"
+        ],
+        "insecure-deserialization": [
+            "T1190"
+        ],
+        "ssti": [
+            "T1190"
+        ],
+        "sql-injection": [
+            "T1190"
+        ],
+        "active-confirm": [
+            "T1190"
+        ],
+        "cache-poisoning": [
+            "T1190"
+        ],
+        "saml": [
+            "T1556",
+            "T1078"
+        ],
+        "oauth-oidc": [
+            "T1556",
+            "T1078"
+        ],
+        "llm-security": [
+            "T1190"
+        ],
+        "default-credentials": [
+            "T1078",
+            "T1110"
+        ],
+        "exposed-secret": [
+            "T1552"
+        ],
+        "public-storage": [
+            "T1530"
+        ],
+        "cloud-exposure": [
+            "T1580",
+            "T1530"
+        ],
+        "cloud-posture": [
+            "T1562",
+            "T1078"
+        ],
+        "cloud-iam-privesc": [
+            "T1098",
+            "T1078"
+        ],
+        "unauth-datastore": [
+            "T1213"
+        ],
+        "subdomain-takeover": [
+            "T1190"
+        ],
+        "vulnerable-dependency": [
+            "T1190"
+        ],
+        "proto-auth": [
+            "T1078",
+            "T1110"
+        ],
+        "container-escape": [
+            "T1611",
+            "T1610"
+        ],
+        "ssrf": [
+            "T1190"
+        ],
+        "lateral-movement": [
+            "T1021",
+            "T1133"
+        ],
+        "rapid-reset": [
+            "T1499"
+        ]
+    },
+    "by_tag": {
+        "bola": [
+            "T1190",
+            "T1213"
+        ],
+        "idor": [
+            "T1190",
+            "T1213"
+        ],
+        "ssrf": [
+            "T1190"
+        ],
+        "prompt-injection": [
+            "T1190"
+        ],
+        "public-policy": [
+            "T1530"
+        ],
+        "public-snapshot": [
+            "T1530"
+        ],
+        "root-keys": [
+            "T1078"
+        ],
+        "logging-stopped": [
+            "T1562"
+        ],
+        "cloud-privesc": [
+            "T1098"
+        ],
+        "lateral-movement": [
+            "T1021"
+        ],
+        "rapid-reset": [
+            "T1499"
+        ]
+    }
+}

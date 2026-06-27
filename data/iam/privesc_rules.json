@@ -1,0 +1,134 @@
+{
+    "_about": "Well-known AWS IAM privilege-escalation primitives. The analyzer SIMULATES whether the discovered identity is *allowed* the listed actions (iam:SimulatePrincipalPolicy — policy evaluation only, NO action is performed). A rule fires only if EVERY action in `actions` simulates as allowed. Derived from public IAM-privesc research (Rhino Security Labs). AUTHORIZED-ASSESSMENT data — safe to delete/extend.",
+    "_schema": {
+        "id": "stable identifier (also used as a finding tag)",
+        "name": "human-readable escalation technique",
+        "severity": "CRITICAL | HIGH",
+        "actions": "ALL IAM actions that must simulate as allowed for the technique to work",
+        "detail": "how the primitive escalates privilege"
+    },
+    "rules": [
+        {
+            "id": "iam-create-access-key",
+            "name": "Create access key for another IAM user",
+            "severity": "CRITICAL",
+            "actions": [
+                "iam:CreateAccessKey"
+            ],
+            "detail": "Mint long-lived credentials for any user (e.g. an admin) and assume their identity."
+        },
+        {
+            "id": "iam-create-login-profile",
+            "name": "Set a console password for another IAM user",
+            "severity": "CRITICAL",
+            "actions": [
+                "iam:CreateLoginProfile"
+            ],
+            "detail": "Create a console login profile for a privileged user and sign in as them."
+        },
+        {
+            "id": "iam-update-login-profile",
+            "name": "Reset another IAM user's console password",
+            "severity": "CRITICAL",
+            "actions": [
+                "iam:UpdateLoginProfile"
+            ],
+            "detail": "Overwrite a privileged user's console password and take over the account."
+        },
+        {
+            "id": "iam-attach-user-policy",
+            "name": "Attach a managed policy to self/user",
+            "severity": "CRITICAL",
+            "actions": [
+                "iam:AttachUserPolicy"
+            ],
+            "detail": "Attach AdministratorAccess to the current user, granting full account control."
+        },
+        {
+            "id": "iam-put-user-policy",
+            "name": "Inline-policy self/user",
+            "severity": "CRITICAL",
+            "actions": [
+                "iam:PutUserPolicy"
+            ],
+            "detail": "Add an inline allow-* policy to the current user for full control."
+        },
+        {
+            "id": "iam-attach-role-policy",
+            "name": "Attach a managed policy to a role",
+            "severity": "CRITICAL",
+            "actions": [
+                "iam:AttachRolePolicy"
+            ],
+            "detail": "Attach AdministratorAccess to an assumable role, then assume it."
+        },
+        {
+            "id": "iam-put-role-policy",
+            "name": "Inline-policy a role",
+            "severity": "CRITICAL",
+            "actions": [
+                "iam:PutRolePolicy"
+            ],
+            "detail": "Add an inline allow-* policy to an assumable role, then assume it."
+        },
+        {
+            "id": "iam-create-policy-version",
+            "name": "Create a new default policy version",
+            "severity": "CRITICAL",
+            "actions": [
+                "iam:CreatePolicyVersion"
+            ],
+            "detail": "Publish a new default version of a managed policy with elevated permissions."
+        },
+        {
+            "id": "iam-set-default-policy-version",
+            "name": "Roll back to a permissive policy version",
+            "severity": "HIGH",
+            "actions": [
+                "iam:SetDefaultPolicyVersion"
+            ],
+            "detail": "Set the default version of a managed policy to an older, more permissive one."
+        },
+        {
+            "id": "iam-update-assume-role-policy",
+            "name": "Rewrite a role trust policy + assume it",
+            "severity": "CRITICAL",
+            "actions": [
+                "iam:UpdateAssumeRolePolicy",
+                "sts:AssumeRole"
+            ],
+            "detail": "Edit a role's trust policy to trust yourself, then assume the (privileged) role."
+        },
+        {
+            "id": "iam-passrole-lambda",
+            "name": "PassRole to a new Lambda function",
+            "severity": "CRITICAL",
+            "actions": [
+                "iam:PassRole",
+                "lambda:CreateFunction",
+                "lambda:InvokeFunction"
+            ],
+            "detail": "Create a Lambda running as a privileged role and invoke it to act with its perms."
+        },
+        {
+            "id": "iam-passrole-ec2",
+            "name": "PassRole to a new EC2 instance",
+            "severity": "CRITICAL",
+            "actions": [
+                "iam:PassRole",
+                "ec2:RunInstances"
+            ],
+            "detail": "Launch an EC2 instance with a privileged instance profile and read its credentials."
+        },
+        {
+            "id": "iam-create-role-passrole",
+            "name": "Create a role and pass it",
+            "severity": "HIGH",
+            "actions": [
+                "iam:CreateRole",
+                "iam:PassRole"
+            ],
+            "detail": "Create a new role with elevated permissions and pass it to a compute service."
+        }
+    ]
+}

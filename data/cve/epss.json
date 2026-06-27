@@ -1,0 +1,34 @@
+{
+    "_about": "Bundled OFFLINE EPSS subset (Exploit Prediction Scoring System). Maps a CVE id to its EPSS probability [0-1] and percentile. Shipped so prioritisation works with no network. Illustrative/pinned values — replace with a full EPSS feed (https://www.first.org/epss/) for production. AUTHORIZED-ASSESSMENT data — safe to delete.",
+    "_threshold_high": 0.5,
+    "scores": {
+        "CVE-2023-38408": {
+            "epss": 0.94221,
+            "percentile": 0.99
+        },
+        "CVE-2024-6387": {
+            "epss": 0.83145,
+            "percentile": 0.98
+        },
+        "CVE-2022-24735": {
+            "epss": 0.21044,
+            "percentile": 0.86
+        },
+        "CVE-2021-23017": {
+            "epss": 0.74832,
+            "percentile": 0.97
+        },
+        "CVE-2021-42013": {
+            "epss": 0.97511,
+            "percentile": 0.99
+        },
+        "CVE-2022-3602": {
+            "epss": 0.10233,
+            "percentile": 0.78
+        },
+        "CVE-2023-44487": {
+            "epss": 0.92010,
+            "percentile": 0.99
+        }
+    }
+}

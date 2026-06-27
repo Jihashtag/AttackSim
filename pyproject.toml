@@ -1,0 +1,30 @@
+[project]
+name = "security_test"
+version = "1.0.0"
+description = "Unauthenticated attacker simulation toolkit (credential-free)."
+requires-python = ">=3.9"
+
+[project.optional-dependencies]
+# Optional offensive extras; the core runs on the stdlib alone.
+crack = ["bcrypt>=4.0", "passlib>=1.7"]
+dev = ["pytest>=7.0", "ruff>=0.4", "mypy>=1.8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]  # long lines tolerated in finding text
+
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true
+warn_unused_ignores = false
+check_untyped_defs = true
+# Modules receive a duck-typed `target`; full strictness is not the goal here.
+disallow_untyped_defs = false

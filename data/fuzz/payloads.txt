@@ -1,0 +1,56 @@
+# fuzz payloads — REVIEWED, BENIGN robustness inputs (exploits/fuzz_probe.py).
+# One payload per line; '#' and blanks ignored. These probe for *fault disclosure*
+# (5xx / stack traces / reflected errors) — NOT for exploitation. They contain NO
+# working exploit, NO command/SQL that mutates data, and NO DoS payload. The fuzzer is
+# rate-limited and capped. AUTHORIZED-ASSESSMENT data — safe to delete/extend.
+
+# --- oversized / boundary (bounded length; not a DoS) ---
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+0
+-1
+2147483648
+9223372036854775808
+99999999999999999999
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+# --- type-confusion / format markers (detect unhandled parsing) ---
+true
+false
+null
+[]
+{}
+{"a":
+[1,2,
+undefined
+
+# --- format-string / template markers (detect reflection/errors, not RCE) ---
+%s%s%s%s
+%n
+${1}
+{{7}}
+#{7}
+${{7}}
+{{}}
+%05d
+
+# --- traversal markers (detect path errors; not a working LFI) ---
+../
+..%2f
+....//
+/nonexistent-sectest-path
+
+# --- encoding / unicode edge cases ---
+%00
+%0a
+%c0%ae
+%ff
+\u0000
+😀
+
+# --- quote / delimiter breakage (detect 500s from unescaped input) ---
+'
+"
+`
+\
+;
+|

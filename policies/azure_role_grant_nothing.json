@@ -1,0 +1,17 @@
+{
+    "properties": {
+        "roleName": "AUTHORIZED-ASSESSMENT-grant-nothing (safe to delete)",
+        "description": "security_test harmless proof: custom role definition that grants no control-plane or data-plane action.",
+        "assignableScopes": [
+            "/subscriptions/REPLACE_SUBSCRIPTION_ID"
+        ],
+        "permissions": [
+            {
+                "actions": [],
+                "notActions": [],
+                "dataActions": [],
+                "notDataActions": []
+            }
+        ]
+    }
+}

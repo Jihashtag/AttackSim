@@ -1,0 +1,145 @@
+name: Build Cross-Platform Binaries
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Set up QEMU (for ARM64 cross-compilation)
+        if: matrix.arch == 'arm64'
+        uses: docker/setup-qemu-action@v3
+      - name: Build Linux ${{ matrix.arch }}
+        run: make -C build linux-${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sectest-linux-${{ matrix.arch }}
+          path: data/payloads/sectest-linux-${{ matrix.arch }}*
+
+  build-linux-musl:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Set up QEMU
+        if: matrix.arch == 'arm64'
+        uses: docker/setup-qemu-action@v3
+      - name: Build Linux musl ${{ matrix.arch }}
+        run: make -C build linux-musl-${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sectest-linux-musl-${{ matrix.arch }}
+          path: data/payloads/sectest-linux-musl-${{ matrix.arch }}*
+
+  build-macos:
+    strategy:
+      matrix:
+        include:
+          - os: macos-13
+            arch: amd64
+          - os: macos-14
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build macOS ${{ matrix.arch }}
+        run: |
+          pip install pyinstaller
+          pyinstaller --onefile --strip --clean \
+            --name sectest-darwin-${{ matrix.arch }} \
+            --exclude-module tests \
+            --exclude-module tkinter \
+            --exclude-module unittest \
+            main.py
+          mkdir -p data/payloads
+          cp dist/sectest-darwin-${{ matrix.arch }} data/payloads/
+          gzip -9 -c data/payloads/sectest-darwin-${{ matrix.arch }} > data/payloads/sectest-darwin-${{ matrix.arch }}.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sectest-darwin-${{ matrix.arch }}
+          path: data/payloads/sectest-darwin-${{ matrix.arch }}*
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build Windows amd64
+        run: |
+          pip install pyinstaller
+          pyinstaller --onefile --strip --clean `
+            --name sectest-windows-amd64 `
+            --exclude-module tests `
+            --exclude-module tkinter `
+            --exclude-module unittest `
+            main.py
+          New-Item -ItemType Directory -Force -Path data/payloads
+          Copy-Item dist/sectest-windows-amd64.exe data/payloads/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sectest-windows-amd64
+          path: data/payloads/sectest-windows-amd64*
+
+  build-zipapp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build Zipapp
+        run: make -C build zipapp
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sectest-zipapp
+          path: data/payloads/sectest.pyz*
+
+  release:
+    needs:
+      [build-linux, build-linux-musl, build-macos, build-windows, build-zipapp]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Generate manifest
+        run: |
+          python3 -c "
+          import json, hashlib, pathlib
+          d = pathlib.Path('artifacts')
+          m = {'payloads': {}}
+          for f in sorted(d.rglob('sectest-*')):
+              if f.is_file():
+                  m['payloads'][f.name] = {
+                      'size': f.stat().st_size,
+                      'sha256': hashlib.sha256(f.read_bytes()).hexdigest()
+                  }
+          pathlib.Path('artifacts/manifest.json').write_text(json.dumps(m, indent=2))
+          "
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/*

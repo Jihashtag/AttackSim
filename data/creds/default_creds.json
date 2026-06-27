@@ -1,0 +1,613 @@
+{
+    "_about": "Curated DEFAULT/weak credential sets for lockout-aware spraying (exploits/default_creds.py). Reviewed, intentionally SMALL per-account (a single pass, <= MAX_ATTEMPTS_PER_ACCOUNT=3). AUTHORIZED-ASSESSMENT data — safe to delete/extend.",
+    "_schema": {
+        "service": "logical product name",
+        "fingerprints": "substrings in a discovered service banner/title/path that select this set",
+        "default_ports": "ports this product commonly listens on",
+        "auth": "http-basic | http-form | http-json | ssh",
+        "login_path": "path used for form/bearer auth probes",
+        "credentials": "[username, password] pairs to try (one pass, capped at MAX_ATTEMPTS_PER_ACCOUNT per username)"
+    },
+    "services": [
+        {
+            "service": "grafana",
+            "fingerprints": ["grafana"],
+            "default_ports": [3000],
+            "auth": "http-form",
+            "login_path": "/login",
+            "api_check": "/api/user",
+            "credentials": [
+                ["admin", "admin"],
+                ["admin", "grafana"],
+                ["admin", "prom-operator"],
+                ["admin", "password"],
+                ["admin", "Admin123"],
+                ["grafana", "grafana"]
+            ]
+        },
+        {
+            "service": "argocd",
+            "fingerprints": ["argocd", "argo cd", "argo-cd"],
+            "default_ports": [8080, 443],
+            "auth": "http-form",
+            "login_path": "/api/v1/session",
+            "credentials": [
+                ["admin", "admin"],
+                ["admin", "password"],
+                ["admin", "argocd"],
+                ["admin", "Admin1234"]
+            ]
+        },
+        {
+            "service": "jenkins",
+            "fingerprints": ["jenkins", "hudson"],
+            "default_ports": [8080, 8443],
+            "auth": "http-basic",
+            "login_path": "/api/json",
+            "credentials": [
+                ["admin", "admin"],
+                ["admin", "password"],
+                ["jenkins", "jenkins"],
+                ["admin", "jenkins"],
+                ["admin", "Admin123"],
+                ["admin", ""]
+            ]
+        },
+        {
+            "service": "kibana",
+            "fingerprints": ["kibana"],
+            "default_ports": [5601],
+            "auth": "http-basic",
+            "login_path": "/api/status",
+            "credentials": [
+                ["elastic", "changeme"],
+                ["kibana", "changeme"],
+                ["elastic", "elastic"],
+                ["elastic", "password"],
+                ["admin", "admin"]
+            ]
+        },
+        {
+            "service": "rabbitmq",
+            "fingerprints": ["rabbitmq"],
+            "default_ports": [15672],
+            "auth": "http-basic",
+            "login_path": "/api/whoami",
+            "credentials": [
+                ["guest", "guest"],
+                ["admin", "admin"],
+                ["rabbitmq", "rabbitmq"],
+                ["admin", "password"]
+            ]
+        },
+        {
+            "service": "tomcat",
+            "fingerprints": ["tomcat", "coyote", "apache tomcat"],
+            "default_ports": [8080, 8443],
+            "auth": "http-basic",
+            "login_path": "/manager/html",
+            "credentials": [
+                ["tomcat", "tomcat"],
+                ["admin", "admin"],
+                ["tomcat", "s3cret"],
+                ["admin", "tomcat"],
+                ["manager", "manager"],
+                ["tomcat", "password"]
+            ]
+        },
+        {
+            "service": "prometheus",
+            "fingerprints": ["prometheus"],
+            "default_ports": [9090],
+            "auth": "http-basic",
+            "login_path": "/api/v1/status/config",
+            "credentials": [
+                ["admin", "admin"],
+                ["prometheus", "prometheus"],
+                ["admin", "password"]
+            ]
+        },
+        {
+            "service": "elasticsearch",
+            "fingerprints": ["elasticsearch", "you know, for search", "elastic"],
+            "default_ports": [9200],
+            "auth": "http-basic",
+            "login_path": "/_security/_authenticate",
+            "credentials": [
+                ["elastic", "changeme"],
+                ["elastic", "elastic"],
+                ["elastic", "password"],
+                ["admin", "admin"],
+                ["kibana_system", "changeme"]
+            ]
+        },
+        {
+            "service": "ssh",
+            "fingerprints": ["ssh", "openssh"],
+            "default_ports": [22, 2222],
+            "auth": "ssh",
+            "credentials": [
+                ["root", "root"],
+                ["root", "admin"],
+                ["root", "password"],
+                ["root", "toor"],
+                ["root", "123456"],
+                ["admin", "admin"],
+                ["admin", "password"],
+                ["admin", "admin123"],
+                ["ubuntu", "ubuntu"],
+                ["pi", "raspberry"],
+                ["vagrant", "vagrant"],
+                ["ec2-user", "ec2-user"],
+                ["ansible", "ansible"],
+                ["deploy", "deploy"]
+            ]
+        },
+        {
+            "service": "mysql",
+            "fingerprints": ["mysql", "mariadb"],
+            "default_ports": [3306],
+            "auth": "http-basic",
+            "login_path": "/phpmyadmin/index.php",
+            "credentials": [
+                ["root", ""],
+                ["root", "root"],
+                ["root", "password"],
+                ["root", "mysql"],
+                ["admin", "admin"],
+                ["mysql", "mysql"]
+            ]
+        },
+        {
+            "service": "postgresql",
+            "fingerprints": ["postgresql", "postgres", "pgadmin"],
+            "default_ports": [5432],
+            "auth": "http-basic",
+            "login_path": "/",
+            "credentials": [
+                ["postgres", "postgres"],
+                ["postgres", ""],
+                ["postgres", "password"],
+                ["admin", "admin"],
+                ["pgadmin", "pgadmin"]
+            ]
+        },
+        {
+            "service": "redis",
+            "fingerprints": ["redis"],
+            "default_ports": [6379, 6380],
+            "auth": "http-basic",
+            "login_path": "/",
+            "credentials": [
+                ["", ""],
+                ["", "redis"],
+                ["", "password"],
+                ["admin", "admin"]
+            ]
+        },
+        {
+            "service": "mongodb",
+            "fingerprints": ["mongodb", "mongo"],
+            "default_ports": [27017],
+            "auth": "http-basic",
+            "login_path": "/",
+            "credentials": [
+                ["admin", ""],
+                ["admin", "admin"],
+                ["admin", "password"],
+                ["root", "root"],
+                ["mongodb", "mongodb"]
+            ]
+        },
+        {
+            "service": "mssql",
+            "fingerprints": ["microsoft sql", "mssql", "sql server"],
+            "default_ports": [1433],
+            "auth": "http-basic",
+            "login_path": "/",
+            "credentials": [
+                ["sa", "sa"],
+                ["sa", "password"],
+                ["sa", ""],
+                ["sa", "Password1"],
+                ["admin", "admin"]
+            ]
+        },
+        {
+            "service": "sonarqube",
+            "fingerprints": ["sonarqube", "sonar"],
+            "default_ports": [9000, 9001],
+            "auth": "http-basic",
+            "login_path": "/api/system/status",
+            "credentials": [
+                ["admin", "admin"],
+                ["admin", "sonar"],
+                ["admin", "password"],
+                ["admin", "Admin1234"]
+            ]
+        },
+        {
+            "service": "minio",
+            "fingerprints": ["minio", "minioui"],
+            "default_ports": [9000, 9001, 9090],
+            "auth": "http-form",
+            "login_path": "/login",
+            "credentials": [
+                ["minioadmin", "minioadmin"],
+                ["admin", "admin"],
+                ["admin", "password"],
+                ["minio", "minio"],
+                ["minio", "minio123"]
+            ]
+        },
+        {
+            "service": "jupyter",
+            "fingerprints": ["jupyter", "jupyterlab", "ipython"],
+            "default_ports": [8888, 8889],
+            "auth": "http-form",
+            "login_path": "/login",
+            "credentials": [
+                ["", ""],
+                ["", "password"],
+                ["admin", "admin"],
+                ["jupyter", "jupyter"],
+                ["admin", "password"]
+            ]
+        },
+        {
+            "service": "traefik",
+            "fingerprints": ["traefik"],
+            "default_ports": [8080, 8443],
+            "auth": "http-basic",
+            "login_path": "/api/rawdata",
+            "credentials": [
+                ["admin", "admin"],
+                ["admin", "password"],
+                ["traefik", "traefik"]
+            ]
+        },
+        {
+            "service": "portainer",
+            "fingerprints": ["portainer"],
+            "default_ports": [9000, 9443],
+            "auth": "http-form",
+            "login_path": "/api/auth",
+            "credentials": [
+                ["admin", "portainer"],
+                ["admin", "admin"],
+                ["admin", "password"],
+                ["admin", "admin123"]
+            ]
+        },
+        {
+            "service": "zabbix",
+            "fingerprints": ["zabbix"],
+            "default_ports": [80, 8080],
+            "auth": "http-form",
+            "login_path": "/index.php",
+            "credentials": [
+                ["Admin", "zabbix"],
+                ["admin", "admin"],
+                ["Admin", "Admin"],
+                ["admin", "zabbix"],
+                ["Admin", "password"]
+            ]
+        },
+        {
+            "service": "nagios",
+            "fingerprints": ["nagios", "nagiosxi"],
+            "default_ports": [80, 443],
+            "auth": "http-basic",
+            "login_path": "/nagiosxi/",
+            "credentials": [
+                ["nagiosadmin", "nagios"],
+                ["nagiosadmin", "nagiosadmin"],
+                ["admin", "admin"],
+                ["nagios", "nagios"]
+            ]
+        },
+        {
+            "service": "couchdb",
+            "fingerprints": ["couchdb", "fauxton"],
+            "default_ports": [5984],
+            "auth": "http-basic",
+            "login_path": "/_session",
+            "credentials": [
+                ["admin", "admin"],
+                ["admin", "couchdb"],
+                ["admin", "password"],
+                ["couchdb", "couchdb"],
+                ["", ""]
+            ]
+        },
+        {
+            "service": "influxdb",
+            "fingerprints": ["influxdb", "influx"],
+            "default_ports": [8086],
+            "auth": "http-basic",
+            "login_path": "/api/v2/setup",
+            "credentials": [
+                ["admin", "admin"],
+                ["admin", "influxdb"],
+                ["admin", "password"],
+                ["admin", "Admin1234"],
+                ["influxdb", "influxdb"]
+            ]
+        },
+        {
+            "service": "nextcloud",
+            "fingerprints": ["nextcloud", "owncloud"],
+            "default_ports": [80, 443, 8080],
+            "auth": "http-basic",
+            "login_path": "/ocs/v1.php/cloud/capabilities",
+            "credentials": [
+                ["admin", "admin"],
+                ["admin", "password"],
+                ["admin", "nextcloud"],
+                ["admin", "Admin1234"],
+                ["user", "user"]
+            ]
+        },
+        {
+            "service": "phpmyadmin",
+            "fingerprints": ["phpmyadmin", "pma", "phpMyAdmin"],
+            "default_ports": [80, 443, 8080],
+            "auth": "http-form",
+            "login_path": "/phpmyadmin/",
+            "credentials": [
+                ["root", ""],
+                ["root", "root"],
+                ["root", "password"],
+                ["admin", "admin"],
+                ["pma", "pma"]
+            ]
+        },
+        {
+            "service": "confluence",
+            "fingerprints": ["confluence", "atlassian confluence"],
+            "default_ports": [8090, 80, 443],
+            "auth": "http-basic",
+            "login_path": "/rest/api/space",
+            "credentials": [
+                ["admin", "admin"],
+                ["admin", "confluence"],
+                ["admin", "password"],
+                ["admin", "Admin1234"],
+                ["confluence", "confluence"]
+            ]
+        },
+        {
+            "service": "jira",
+            "fingerprints": ["jira", "atlassian jira", "servicedesk"],
+            "default_ports": [8080, 80, 443],
+            "auth": "http-basic",
+            "login_path": "/rest/api/2/serverInfo",
+            "credentials": [
+                ["admin", "admin"],
+                ["admin", "jira"],
+                ["admin", "password"],
+                ["admin", "Admin1234"],
+                ["jira", "jira"]
+            ]
+        },
+        {
+            "service": "nexus",
+            "fingerprints": ["nexus repository", "sonatype nexus", "nexus"],
+            "default_ports": [8081, 8082],
+            "auth": "http-basic",
+            "login_path": "/service/rest/v1/status",
+            "credentials": [
+                ["admin", "admin123"],
+                ["admin", "admin"],
+                ["admin", "password"],
+                ["admin", "nexus"]
+            ]
+        },
+        {
+            "service": "gitlab",
+            "fingerprints": ["gitlab", "git lab"],
+            "default_ports": [80, 443, 8080],
+            "auth": "http-form",
+            "login_path": "/api/v4/version",
+            "credentials": [
+                ["root", "5iveL!fe"],
+                ["root", "password"],
+                ["admin", "admin"],
+                ["root", "root1234"],
+                ["admin", "admin1234"]
+            ]
+        },
+        {
+            "service": "consul",
+            "fingerprints": ["consul"],
+            "default_ports": [8500, 8501],
+            "auth": "http-basic",
+            "login_path": "/v1/status/leader",
+            "credentials": [
+                ["", ""],
+                ["admin", "admin"],
+                ["admin", "consul"],
+                ["consul", "consul"]
+            ]
+        },
+        {
+            "service": "vault",
+            "fingerprints": ["vault", "hashicorp vault"],
+            "default_ports": [8200, 8201],
+            "auth": "http-basic",
+            "login_path": "/v1/sys/health",
+            "credentials": [
+                ["", "root"],
+                ["root", ""],
+                ["admin", "admin"],
+                ["vault", "vault"]
+            ]
+        },
+        {
+            "service": "netdata",
+            "fingerprints": ["netdata"],
+            "default_ports": [19999],
+            "auth": "http-basic",
+            "login_path": "/api/v1/info",
+            "credentials": [
+                ["", ""],
+                ["admin", "admin"],
+                ["netdata", "netdata"]
+            ]
+        },
+        {
+            "service": "hadoop-namenode",
+            "fingerprints": ["hadoop", "namenode", "hdfs"],
+            "default_ports": [50070, 9870, 8088],
+            "auth": "http-basic",
+            "login_path": "/jmx",
+            "credentials": [
+                ["", ""],
+                ["admin", "admin"],
+                ["hadoop", "hadoop"],
+                ["hdfs", "hdfs"]
+            ]
+        },
+        {
+            "service": "spark",
+            "fingerprints": ["spark", "apache spark"],
+            "default_ports": [4040, 8080, 7077],
+            "auth": "http-basic",
+            "login_path": "/api/v1/applications",
+            "credentials": [
+                ["", ""],
+                ["admin", "admin"],
+                ["spark", "spark"]
+            ]
+        },
+        {
+            "service": "airflow",
+            "fingerprints": ["airflow", "apache airflow"],
+            "default_ports": [8080],
+            "auth": "http-form",
+            "login_path": "/api/v1/health",
+            "credentials": [
+                ["admin", "admin"],
+                ["airflow", "airflow"],
+                ["admin", "password"],
+                ["airflow", "password"]
+            ]
+        },
+        {
+            "service": "superset",
+            "fingerprints": ["superset", "apache superset"],
+            "default_ports": [8088],
+            "auth": "http-form",
+            "login_path": "/api/v1/security/login",
+            "credentials": [
+                ["admin", "general"],
+                ["admin", "admin"],
+                ["admin", "password"],
+                ["superset", "superset"]
+            ]
+        },
+        {
+            "service": "metabase",
+            "fingerprints": ["metabase"],
+            "default_ports": [3000],
+            "auth": "http-form",
+            "login_path": "/api/session",
+            "credentials": [
+                ["admin@example.com", "admin"],
+                ["admin", "admin"],
+                ["metabase@example.com", "metabase"],
+                ["admin", "password"]
+            ]
+        },
+        {
+            "service": "pgadmin",
+            "fingerprints": ["pgadmin", "pgAdmin 4"],
+            "default_ports": [80, 443, 5050, 5051],
+            "auth": "http-form",
+            "login_path": "/login",
+            "credentials": [
+                ["admin@pgadmin.org", "admin"],
+                ["pgadmin4@pgadmin.org", "admin"],
+                ["admin", "admin"],
+                ["admin", "password"]
+            ]
+        },
+        {
+            "service": "graylog",
+            "fingerprints": ["graylog"],
+            "default_ports": [9000],
+            "auth": "http-basic",
+            "login_path": "/api/system/lbstatus",
+            "credentials": [
+                ["admin", "admin"],
+                ["admin", "password"],
+                ["graylog", "graylog"]
+            ]
+        },
+        {
+            "service": "keycloak",
+            "fingerprints": ["keycloak", "redhat sso"],
+            "default_ports": [8080, 8443, 9080],
+            "auth": "http-form",
+            "login_path": "/auth/admin/",
+            "credentials": [
+                ["admin", "admin"],
+                ["admin", "password"],
+                ["keycloak", "keycloak"],
+                ["admin", "Admin1234"]
+            ]
+        },
+        {
+            "service": "openldap",
+            "fingerprints": ["openldap", "389 directory", "ldap"],
+            "default_ports": [389, 636],
+            "auth": "http-basic",
+            "login_path": "/",
+            "credentials": [
+                ["admin", "admin"],
+                ["cn=admin", "admin"],
+                ["admin", "password"],
+                ["ldapadmin", "ldapadmin"]
+            ]
+        },
+        {
+            "service": "awx-ansible",
+            "fingerprints": ["awx", "ansible tower", "ansible automation"],
+            "default_ports": [80, 443],
+            "auth": "http-basic",
+            "login_path": "/api/v2/me/",
+            "credentials": [
+                ["admin", "password"],
+                ["admin", "admin"],
+                ["admin", "Admin1234"],
+                ["tower", "password"]
+            ]
+        },
+        {
+            "service": "generic-admin",
+            "fingerprints": ["admin panel", "login", "username", "password", "sign in", "dashboard", "wp-login", "administrator"],
+            "default_ports": [80, 443, 8080, 8443],
+            "auth": "http-form",
+            "login_path": "/admin",
+            "credentials": [
+                ["admin", "admin"],
+                ["admin", "password"],
+                ["admin", "123456"],
+                ["admin", "admin123"],
+                ["administrator", "administrator"],
+                ["administrator", "password"],
+                ["root", "root"],
+                ["root", "password"],
+                ["user", "user"],
+                ["user", "password"],
+                ["test", "test"],
+                ["guest", "guest"],
+                ["demo", "demo"],
+                ["admin", "Admin@123"],
+                ["admin", "P@ssw0rd"],
+                ["admin", "Welcome1"],
+                ["admin", "qwerty"]
+            ]
+        }
+    ]
+}
