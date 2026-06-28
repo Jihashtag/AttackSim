@@ -19,6 +19,7 @@ only ever **create** harmless, clearly-labelled artifacts.
 - Encryption / ransomware
 - Denial of service
 - Unauthorized privilege escalation (persistent backdoors, shell left open, data exfiltration); the `privesc-exploit` module at `--intensity intrusive` only runs `id` for verification on explicitly authorized local targets and writes a single labelled marker file — no persistent access
+- Destructive filesystem operations: the proof-of-access marker command (`exploits/proof_marker.py`) runs `echo` + `id` + a `/tmp/SECTEST_PROOF_*.txt` write — never `chmod`, `rm`, or any destructive operation
 - Rootkits / implants / backdoors
 - Credential minting (no `CreateAccessKey`, `CreateLoginProfile`, etc.)
 

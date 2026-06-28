@@ -796,10 +796,37 @@ def _confirm_propagate(args, *, isatty=None, input_fn=None, out=None) -> bool:
 
 
 
+def _post_exploit_hook(target, result) -> None:
+    """Central post-exploit hook: propagation + local proof receipt for every exploited result.
+
+    Called by ``_safe_run`` after any module returns ``exploited=True``.  Modules that
+    already manage their own ``pivot_targets`` entries (e.g. ``ssh-auth``,
+    ``bluetooth-probe``) are handled idempotently — the hook skips hosts already
+    registered by the module itself.
+    """
+    from exploits.post_exploit import record_foothold
+
+    host = getattr(target, "host", None)
+    port = getattr(target, "port", None)
+    kind = getattr(target, "kind", "hostport")
+
+    if not host:
+        url = getattr(target, "url", None)
+        if url:
+            from urllib.parse import urlparse as _up
+            _p = _up(url)
+            host = _p.hostname
+            port = _p.port or (443 if _p.scheme == "https" else 80)
+            kind = "url"
+
+    if host:
+        record_foothold(target, result, host=host, port=port or 0, kind=kind)
+
+
 def _safe_run(mod, target):
     """Run one module, converting any crash into a non-fatal error result."""
     try:
-        return mod.run(target)
+        result = mod.run(target)
     except Exception as exc:  # a module must never crash the whole run
         from exploits.base import ExploitResult
         return ExploitResult(
@@ -807,6 +834,12 @@ def _safe_run(mod, target):
             description=getattr(mod, "DESCRIPTION", ""),
             exploited=False, error=f"module crashed: {exc!r}", tool_available=False,
         )
+    if getattr(result, "exploited", False):
+        try:
+            _post_exploit_hook(target, result)
+        except Exception:
+            pass
+    return result
 
 
 def _run_modules(mods, target, jobs: int = 1, resume=None) -> list:

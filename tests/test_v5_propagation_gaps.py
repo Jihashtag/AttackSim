@@ -91,7 +91,7 @@ class TestShellshockProbe:
         from exploits import shellshock_probe
         assert shellshock_probe.NAME == "shellshock-probe"
         assert shellshock_probe.SUPPORTS == {"url"}
-        assert shellshock_probe.INTENSITY == "active"
+        assert shellshock_probe.INTENSITY == "intrusive"
 
     def test_no_url(self):
         from exploits import shellshock_probe

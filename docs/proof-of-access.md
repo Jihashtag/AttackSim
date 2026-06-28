@@ -22,6 +22,24 @@ The `access-prover` module turns a *detected* exposure into an *undeniable* one.
 | `--prove-access-writes` | Enable write-proof only (marker files, datastore keys) |
 | `--prove-access-shell` | Enable shell-proof only (persistent container) |
 
+## Centralized post-exploit hook
+
+Every module that returns `exploited=True` at `intrusive+` intensity automatically
+triggers a **post-exploit hook** in the orchestrator (`exploits/post_exploit.py`). The
+hook does two things without requiring any module-specific code:
+
+1. **Propagation**: registers the foothold in `target.pivot_targets` so the orchestrator
+   re-runs the scanner from or alongside the compromised host. Idempotent — modules that
+   already manage their own pivot entries (e.g. `ssh-auth`) are skipped.
+2. **Local proof receipt**: when `--prove-access` is active, writes a labelled
+   `SECTEST_PROOF_<module>_<host>_<port>_<ts>.txt` file to `/tmp` (or `$SECTEST_PROOF_DIR`)
+   as a scanner-side audit trail of the confirmed exploitation.
+
+Modules with actual **command execution** on the target (cmd-inject-confirm, shellshock-probe,
+ssh-auth, ssti-confirm at intrusive+, php-cgi-probe at intrusive+) additionally write the
+shared proof marker (`echo "..." && id && /tmp marker file`) **on the target system** via
+their respective execution channel when `--prove-access` is set.
+
 ## Implemented proofs
 
 ### Docker Engine API (`:2375`/`:2376`)

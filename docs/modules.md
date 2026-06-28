@@ -22,7 +22,7 @@ Run `python3 main.py --list-modules` to print the live catalogue.
 |---|---|---|---|---|
 | `http-probe` | url | active | Probe a live endpoint | reachable unauthenticated, no TLS, bad cert, or a supplied token is accepted |
 | `path-probe` | url | detective | Discover sensitive paths (Spring Actuator `/env` & `/heapdump`, `/.git`, config files, API docs) | a CRITICAL/HIGH path is reachable unauthenticated |
-| `jwt-attacker` | url | active | Live JWT bypass: `alg:none`, claim tampering, weak HS256-secret crack | a forged token is accepted or the signing secret is recovered |
+| `jwt-attacker` | url | active | Live JWT bypass: `alg:none`, claim tampering, weak HS256-secret crack; at intrusive+ probes common admin paths with the accepted token to confirm breadth of access | a forged token is accepted or the signing secret is recovered |
 | `cred-tester` | creds | active | Validate credentials | an auth attempt succeeds (HTTP 2xx) |
 | `port-probe` | host:port | detective | Reach a network service | a TCP connection is accepted |
 | `tls-grader` | url / host:port | detective | Grade transport security | deprecated TLS, weak cipher, or invalid/expired certificate |
@@ -40,17 +40,16 @@ Run `python3 main.py --list-modules` to print the live catalogue.
 | `dns-enum` | host:port / url | detective | DNS record enumeration, subdomain brute-force, and certificate-transparency lookup | a hidden subdomain or sensitive DNS record is discovered |
 | `reverse-dns` | host:port / netrange | detective | Reverse DNS (PTR) lookup for IPs — maps addresses to hostnames and cloud providers | a hostname or provider mapping is returned |
 | `subdomain-takeover` | url / host:port | detective | Detect dangling CNAMEs pointing at unclaimed cloud resources | a takeover-eligible CNAME is found |
-| `graphql-probe` | url | detective | Discover GraphQL endpoints and flag introspection / field-suggestion leakage | introspection is enabled or field suggestions leak the schema |
+| `graphql-probe` | url | detective | Discover GraphQL endpoints; flag introspection, suggestion leakage, batch amplification, depth limit; at intrusive+ invokes safe mutations (non-destructive names only) without auth to confirm missing access controls | introspection enabled, schema leaked, or an unauthenticated mutation executes |
 | `api-spec-discovery` | url | detective | Find OpenAPI/Swagger/.well-known specs and unauthenticated sensitive endpoints | an API spec is reachable with unprotected sensitive endpoints |
 | `public-storage-enum` | url / cloud | active | Find anonymously-listable public S3/GCS/Azure storage buckets | a public bucket is listable (data leak) |
-| `oidc-oauth-misconfig` | url | active | Flag OIDC/OAuth weaknesses: `alg:none`, http endpoints, no PKCE, open registration | a critical misconfiguration is found |
-| `cache-poisoning` | url | active | Detect unkeyed-header reflection into cacheable responses | a cache-poisoning vector is confirmed |
+| `oidc-oauth-misconfig` | url | active | Flag OIDC/OAuth weaknesses: `alg:none`, http endpoints, no PKCE, open registration; at intrusive+ submits an unsigned JWT to the userinfo endpoint to confirm the server actually accepts alg:none | a critical misconfiguration is found; or unsigned JWT bypass confirmed |
+| `cache-poisoning` | url | active | Detect unkeyed-header reflection into cacheable responses; at intrusive+ confirms actual poisoning via a unique canary URL (two-step prime+follow-up) without affecting real traffic | a cache-poisoning precondition is detected; or poisoning confirmed on canary URL |
 | `saml-misconfig` | url | active | SAML/SSO metadata & endpoint misconfiguration posture (detection-only) | `WantAssertionsSigned=false` or SHA-1 signatures are found |
 | `http2-rapid-reset` | url / host:port | detective | Detect HTTP/2 support and flag CVE-2023-44487 rapid-reset exposure (detection-only, never opens/resets a stream) | HTTP/2 is supported on an unpatched server |
-| `etcd-probe` | host:port | detective | Detect unauthenticated etcd (v2/v3) exposing cluster keys | etcd answers without auth |
-| `grpc-reflection` | host:port | detective | Detect exposed gRPC server-reflection (full API surface leak) | reflection is enabled, leaking the full service API |
-| `shellshock-probe` | url | active | Detect Bash Shellshock (CVE-2014-6271) on CGI endpoints via a benign echo canary | the canary value is reflected in the response |
-| `php-cgi-probe` | url | active | Detect PHP-CGI argument injection (CVE-2012-1823, CVE-2024-4577) | a PHP argument-injection response is returned |
+| `etcd-probe` | host:port | detective | Detect unauthenticated etcd (v2/v3) exposing cluster keys; at intrusive+ reads up to 5 key-value pairs (truncated) to confirm actual data access | etcd answers without auth; or kv values confirmed readable |
+| `grpc-reflection` | host:port | detective | Detect exposed gRPC server-reflection, enumerate services and methods; at intrusive+ invokes public-looking methods with empty payload to confirm unauthenticated access | reflection is enabled, leaking the full service API; or method callable without auth |
+| `php-cgi-probe` | url | active | Detect PHP-CGI argument injection (CVE-2012-1823, CVE-2024-4577); at intrusive+ sends POST RCE body for CVE-2024-4577 | a PHP argument-injection response is returned or POST RCE body executes |
 | `pkg-tls-probe` | host:port / url | active | Probe TLS posture: self-signed certs, missing HSTS, STARTTLS strip opportunity, and downgrade exposure | a high-severity TLS weakness is confirmed |
 | `passive-discovery` | host:port / local / netrange | active | Harvest ARP/neighbor cache, listen for mDNS/LLMNR/NBT-NS/SSDP broadcasts, enumerate local interfaces | at least one peer or broadcast responder is discovered |
 
@@ -77,13 +76,13 @@ read-only.
 
 | Module | Target kind | Attack simulated | Outcome = EXPLOITED when… |
 |---|---|---|---|
-| `k8s-probe` | host:port | Unauthenticated Kubernetes control plane (API server anonymous-auth, kubelet, etcd) plus CVE-2019-11248, CVE-2025-0426, CVE-2024-9042 and anonymous `/configz` | a component answers anonymously |
+| `k8s-probe` | host:port | Unauthenticated Kubernetes control plane (API server anonymous-auth, kubelet, etcd) plus CVE-2019-11248, CVE-2025-0426, CVE-2024-9042 and anonymous `/configz`; at intrusive+ creates a labelled ConfigMap then immediately deletes it to confirm anonymous write access | a component answers anonymously; or anonymous write confirmed |
 | `k8s-service-enum` | host:port / url | Enumerate K8s services, ingresses, HTTPRoutes, VirtualServices, ConfigMaps, webhooks, NetworkPolicies for lateral-movement URL discovery | a reachable internal service or pivot URL is discovered |
 | `service-mesh-probe` | host:port / url | Detect service-mesh sidecars (Envoy/Istio) via admin ports and enumerate upstream clusters/routes | sidecar admin port is exposed and upstream clusters are enumerable |
 | `ingress-nightmare` | url / host:port | IngressNightmare CVE matrix (CVE-2025-1974/1097/1098/24513/24514) + admission-webhook reachability + project-EOL flag | a controller below 1.11.5/1.12.1 is detected, or any version on the archived project |
-| `unauth-service-probe` | host:port | Open datastores/daemons (Redis, Memcached, Elasticsearch/OpenSearch, MongoDB, Docker API, registry, Prometheus, Postgres) | a service answers without auth |
-| `kafka-probe` | host:port | Open Confluent/Kafka stack (broker `ApiVersions`, Schema Registry, Kafka Connect REST, REST Proxy) | a broker accepts PLAINTEXT or a REST service answers unauthenticated |
-| `metadata-ssrf` | url | SSRF → cloud metadata (AWS/GCP/Azure IMDS) credential theft | the endpoint reflects instance-metadata content |
+| `unauth-service-probe` | host:port | Open datastores/daemons (Redis, Memcached, Elasticsearch/OpenSearch, MongoDB, Docker API, registry, Prometheus, Postgres); at intrusive+ confirms write access via SET+DEL on Redis or PUT+DELETE doc on Elasticsearch | a service answers without auth; or write confirmed |
+| `kafka-probe` | host:port | active | Detect open Confluent/Kafka stack (broker, Schema Registry, Connect, REST Proxy); at intrusive+ consumes first offset-0 message from REST Proxy to confirm data access | a broker or REST service answers unauthenticated; or message consumed |
+| `metadata-ssrf` | url | active | SSRF → cloud metadata (AWS/GCP/Azure IMDS) credential theft; at intrusive+ reads the full AWS IAM role credential JSON (AccessKeyId + Expiration only — SecretAccessKey redacted) | IMDS content reflected; or full AWS role credential confirmed |
 | `argocd-probe` | url | ArgoCD exposure + version advisories (CVE-2024-21652/21661, CVE-2025-55190, CVE-2026-42880) and `/api/webhook` DoS reachability | an old/affected version or unauthenticated API listing |
 | `kyverno-probe` | url / host:port | Kyverno admission-controller exposure via `:8000/metrics` + version-advisory map (GHSA-8wfp-579w-6r25, GHSA-qr4g-8hrp-c4rw) | the metrics endpoint answers anonymously or an affected build is fingerprinted |
 | `cloud-recon` | cloud | active | Credentialed read-only cloud recon: current identity + IAM inventory (AWS/GCP/Azure) | an identity with sensitive permissions is discovered |
@@ -109,11 +108,12 @@ run, always require a scope allow-list, and each is lockout-/rate-aware.
 | `broker-auth` | host:port | intrusive | Probe MQTT/AMQP brokers for anonymous or default auth | an anonymous/default-cred broker connection is accepted |
 | `db-auth` | host:port | intrusive | One non-brute attempt per DB engine (PostgreSQL trust, MySQL blank root, MSSQL fingerprint, Oracle TNS) | a trust/blank-password/anonymous database accepts the connection |
 | `api-idor` | url | intrusive | Confirm BOLA/IDOR with read-only cross-identity requests (GET only, CWE-639) | a user can read another user's object |
-| `deserialization-probe` | url | intrusive | Detect insecure-deserialization sinks + confirm via benign OOB canary | a deserialization sink is reachable and confirmed |
-| `ssti-confirm` | url | intrusive | Confirm SSTI via benign arithmetic evaluation (never executes commands) | a computed arithmetic result confirms template evaluation |
-| `sqli-confirm` | url | intrusive | Confirm SQLi via benign error/boolean/time-based signals — never extracts data | a database syntax error, boolean divergence, or bounded delay confirms injection |
-| `xxe-confirm` | url | intrusive | Confirm XXE via internal-entity expansion + external entity to operator canary only | the parser expands entities or fetches the OOB canary |
-| `path-traversal-confirm` | url | intrusive | Confirm LFI/traversal via non-secret OS-file signatures | a traversal payload returns a known OS-file signature |
+| `deserialization-probe` | url | intrusive | Detect insecure-deserialization sinks + confirm via benign OOB canary; at intrusive+ (no canary) uses error-differential on truncated serialized objects to confirm live deserializer | a deserialization sink is reachable and confirmed |
+| `shellshock-probe` | url | intrusive | Confirm Bash Shellshock (CVE-2014-6271/CVE-2014-7169) RCE via HTTP header injection in CGI endpoints; runs proof marker (echo + id) on confirmation | the canary is reflected and `id` output is captured |
+| `ssti-confirm` | url | intrusive | Confirm SSTI via arithmetic evaluation; at intrusive+ attempts engine-specific `id` RCE confirmation | arithmetic result confirms template evaluation; or RCE confirmed |
+| `sqli-confirm` | url | intrusive | Confirm SQLi via error/boolean/time-based signals; at intrusive+ attempts UNION SELECT canary for data-extraction proof | injection confirmed; or canary reflected in UNION SELECT |
+| `xxe-confirm` | url | intrusive | Confirm XXE via internal-entity expansion + OOB canary; at intrusive+ reads `/etc/hostname` to confirm file-read capability | entity expansion or OOB canary hit; or file-read confirmed |
+| `path-traversal-confirm` | url | intrusive | Confirm LFI/traversal via non-secret OS-file signatures (/etc/passwd, win.ini); at proof+ attempts /proc/self/environ to expose process environment variables | a traversal returns a known OS-file signature; or env vars confirmed |
 | `request-smuggling` | url | intrusive | Timing-only CL.TE/TE.CL desync detection (never poisons a victim request) | an ambiguous request stalls measurably vs baseline |
 | `cmd-inject-confirm` | url | intrusive | Confirm OS command injection via a benign arithmetic canary (`expr`) — never executes destructive commands | the computed arithmetic result is returned in the response |
 | `ssh-auth` | host:port | intrusive | Lockout-aware SSH credential spraying and discovered-key verification | a credential or key authenticates |

