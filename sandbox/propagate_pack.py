@@ -37,12 +37,17 @@ _PLATFORM_MAP = {
     ("Windows", "x86_64"): "windows-amd64",
     ("Darwin", "x86_64"): "darwin-amd64",
     ("Darwin", "arm64"): "darwin-arm64",
+    ("Linux", "mips"):     "linux-mips",
+    ("Linux", "mips64"):   "linux-mips64",
+    ("Linux", "mipsel"):   "linux-mipsel",   # little-endian MIPS (many consumer routers)
 }
 
 # musl-based platforms (Alpine, etc.) need separate binaries
 _MUSL_PLATFORM_MAP = {
     ("Linux", "x86_64"): "linux-musl-amd64",
     ("Linux", "aarch64"): "linux-musl-arm64",
+    ("Linux", "mipsel"):   "linux-musl-mipsel",
+    ("Linux", "mips"):     "linux-musl-mips",
 }
 
 
@@ -286,6 +291,9 @@ def select_strategy(platform: Optional[str] = None,
                                is_executable=False)
 
     # Auto-selection: native > zipapp > source
+    # Note: MIPS targets (linux-mips, linux-mips64, linux-mipsel, linux-musl-mips,
+    # linux-musl-mipsel) without Python available should use the native strategy.
+    # zipapp (requires python3) is tried first when python3 is available on target.
     if platform:
         native = get_native_payload(platform)
         if native:
@@ -332,6 +340,8 @@ def payload_manifest() -> Dict:
 
     # Available strategies
     for platform in ("linux-amd64", "linux-arm64", "linux-musl-amd64", "linux-musl-arm64",
+                     "linux-mips", "linux-mips64", "linux-mipsel",
+                     "linux-musl-mips", "linux-musl-mipsel",
                      "darwin-amd64", "darwin-arm64", "windows-amd64"):
         if native_available(platform):
             manifest["strategies"].append(f"native:{platform}")

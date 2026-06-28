@@ -5,10 +5,11 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
+toto/
 
 # CVE auto-pwn audit logs (generated at runtime, not source)
 data/cve/audit_log/*.json
-../../osint/osaa/.gitignore
+data/cve/cache/
 __pycache__/*
 */__pycache__/
 */*/__pycache__/

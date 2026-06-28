@@ -1300,6 +1300,10 @@ def _build_propagation_args(target, host: str) -> list:
     if propagate_strategy:
         args += ["--propagate-strategy", propagate_strategy]
 
+    # Always scan the propagated device itself (localhost services, privilege level,
+    # WiFi/BT adapters, OS posture). This feeds device_posture and local modules.
+    args.append("--local")
+
     # Mark the deployed instance as propagated so modules that inspect local
     # network state know the local network belongs to the foothold, not the operator.
     args += ["--propagated-instance"]
@@ -1406,6 +1410,19 @@ def _propagate_to_foothold(spec: dict, target, *,
             if foothold["url"]:
                 ok, output = shell_transport.deliver_and_exec(
                     foothold, archive, args_list)
+        elif relay_type == "adb":
+            # Android Debug Bridge — propagate to rooted/debug-enabled Android device
+            from sandbox.propagate_transport import AdbTransport
+            adb_transport = AdbTransport()
+            foothold = {
+                "type": "adb",
+                "host": host,
+                "port": relay_spec.get("port", 5555),
+                "serial": relay_spec.get("serial", ""),
+            }
+            ok, output = adb_transport.deliver_and_exec(
+                foothold, archive, args_list,
+                timeout=_PROPAGATE_TIMEOUT if "_PROPAGATE_TIMEOUT" in dir() else 120)
         elif relay_type in ("aws-ssm", "gcp-oslogin", "azure-runcommand"):
             # Cloud API-based propagation
             from sandbox.propagate_transport import CloudStorageTransport
@@ -1455,6 +1472,16 @@ _SERVICE_TYPE_VERSIONS = {
     "postgres": {"product": "postgresql",  "version": "16.0",   "vendor": "postgresql"},
     "mongodb": {"product": "mongodb",      "version": "7.0.0",  "vendor": "mongodb"},
     "grafana": {"product": "grafana",      "version": "10.2.0", "vendor": "grafana"},
+    "openwrt":   {"product": "openwrt",         "version": "23.05.0", "vendor": "openwrt"},
+    "dd-wrt":    {"product": "dd-wrt",           "version": "3.0-r49170", "vendor": "dd-wrt"},
+    "mikrotik":  {"product": "routeros",         "version": "7.11.0", "vendor": "mikrotik"},
+    "ubiquiti":  {"product": "airmax-firmware",  "version": "8.7.11", "vendor": "ubiquiti"},
+    "android":   {"product": "android",          "version": "13",     "vendor": "google"},
+    "ios":       {"product": "ios",              "version": "17.0",   "vendor": "apple"},
+    "routeros":  {"product": "routeros",         "version": "7.11.0", "vendor": "mikrotik"},
+    "fortios":   {"product": "fortios",          "version": "7.4.0",  "vendor": "fortinet"},
+    "pfsense":   {"product": "pfsense",          "version": "2.7.0",  "vendor": "netgate"},
+    "junos":     {"product": "junos",            "version": "23.1R1", "vendor": "juniper"},
 }
 
 

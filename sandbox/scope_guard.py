@@ -66,14 +66,22 @@ def allows(run_intensity: str, module_intensity: str) -> bool:
 
     The linear tiers (detective<active<intrusive) are inclusive: a higher run intensity
     includes every lower module. ``proof`` and ``fuzz`` are special peaks — a run only
-    executes them when its own intensity is exactly that peak (they are separately opted
+    executes them when its own intensity is at least that peak (they are separately opted
     into), but such a peak run still includes the whole detective..intrusive base so the
     normal reconnaissance still happens first.
+
+    Tier ordering for peak inclusion: fuzz (rank 4) > proof (rank 3) > intrusive base.
+    A ``fuzz`` run therefore includes ``proof`` modules (fuzz ⊇ proof ⊇ intrusive ladder).
+    A ``proof`` run does NOT include ``fuzz`` modules (fuzz is a distinct, higher opt-in).
     """
     run_i = normalise(run_intensity)
     mod_i = normalise(module_intensity)
-    if mod_i in (PROOF, FUZZ):
-        return run_i == mod_i
+    if mod_i == FUZZ:
+        # fuzz modules only run when the run intensity is exactly fuzz
+        return run_i == FUZZ
+    if mod_i == PROOF:
+        # proof modules run when the run intensity is proof OR fuzz (fuzz is a superset)
+        return run_i in (PROOF, FUZZ)
     # base ladder module: any run at >= its rank (capping peaks to the intrusive base)
     base_run_rank = min(rank(run_i), ORDER[INTRUSIVE]) if run_i in (PROOF, FUZZ) else rank(run_i)
     return base_run_rank >= rank(mod_i)

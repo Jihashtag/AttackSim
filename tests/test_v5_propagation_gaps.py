@@ -268,7 +268,7 @@ class TestLlmEndpointEnum:
 class TestTransportRegistry:
     def test_all_transports_count(self):
         from sandbox.propagate_transport import ALL_TRANSPORTS
-        assert len(ALL_TRANSPORTS) == 7
+        assert len(ALL_TRANSPORTS) == 8  # +1 for AdbTransport (v8 Android propagation)
 
     def test_transport_names(self):
         from sandbox.propagate_transport import ALL_TRANSPORTS
