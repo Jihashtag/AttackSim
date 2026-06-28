@@ -1,14 +1,17 @@
-# Local Introspection & Container Escape
+# Local Introspection, Container Escape & On-Site Assessment
 
-With `--local` the toolkit inspects **the host it is running on**. Detection is read-only
-— it reads `/proc`, mount tables, capability bits and on-disk runtime versions.
+With `--local` the toolkit inspects **the host it is running on**. Pure introspection
+modules are read-only — they read `/proc`, mount tables, capability bits and on-disk
+runtime versions. On-site modules (WiFi, Bluetooth, router, Android/iOS) activate
+active scanning on the local host or when deployed via propagation onto a foothold.
 
-## Modules
+## Introspection & escape-detection modules
 
 | Module | Target kind | What it detects | Outcome = EXPLOITED when… |
 |---|---|---|---|
 | `container-escape-detector` | local / host:port | Container-escape preconditions — dangerous capabilities (`CAP_SYS_ADMIN`/`SYS_MODULE`/`SYS_PTRACE`/`DAC_READ_SEARCH`), mounted Docker/containerd/CRI-O socket, writable host bind mounts, writable `/sys`, shared host PID namespace, vulnerable runc (Leaky Vessels CVE-2024-21626; CVE-2025-31133/52565/52881) — plus, remotely, an unauthenticated Docker/kubelet API | a CRITICAL/HIGH escape precondition or exposed runtime API |
 | `rootkit-ioc-detector` | local | Linux rootkit/implant IOCs — non-empty `/etc/ld.so.preload`, PID-1 `LD_PRELOAD` (Azazel/Jynx/BEURK/vlany/bdvl/Symbiote), kernel taint, known LKM rootkit modules (Diamorphine/Reptile/Suterusu/KoviD/…), hidden modules, rootkit symbols in `/proc/kallsyms`, pinned eBPF implants (TripleCross/ebpfkit/Boopkit/pamspy), promiscuous interfaces | a CRITICAL/HIGH rootkit IOC is present |
+| `linux-privesc` | local / host:port | detective | Detect Linux privilege-escalation preconditions: kernel CVEs, SUID binaries, sudo misconfig, Docker group, writable cron (local + SSH fingerprint) | a HIGH/CRITICAL escalation vector is found |
 | `sbom-scan` | local / repo | Software-composition vulnerability scan (trivy/grype) | a HIGH/CRITICAL dependency vulnerability is found |
 
 ## Behavior
@@ -53,6 +56,39 @@ python3 main.py --local --only rootkit-ioc-detector
 python3 main.py --local --prove-access --only container-escape-detector
 python3 main.py 10.0.0.5:2375 --prove-access --only container-escape-detector
 ```
+
+## On-site / physical assessment modules
+
+These modules run on a **local machine at the assessment site** (or on a proven foothold
+reached via propagation). They enumerate the physical environment — wireless networks,
+nearby Bluetooth devices, routers, and mobile devices — and feed discovered hosts back
+into the orchestrator as pivot targets.
+
+| Module | Tier | What it does |
+|---|---|---|
+| `wifi-probe` | active | Enumerate nearby SSIDs via `nmcli`/`iwlist`/`iw`. Reports encryption posture (open/WEP/WPS/WPA2/WPA3). On a vulnerable finding, adds the default gateway IP and local subnet CIDR to `pivot_targets` so downstream modules sweep the LAN. |
+| `bluetooth-probe` | active | Discover nearby Bluetooth devices via `bluetoothctl`/`hcitool`. Browse SDP records for RFCOMM/SPP services. Enumerate GATT services via `gatttool`. High-risk UUIDs (Nordic UART `6e400001`, vendor serial `00001234`/`49535343`) generate HIGH findings and `ble-uart`/`bt-rfcomm` pivot relays. |
+| `router-probe` | active | Fingerprint default gateway and discovered routers: admin panel on HTTP/HTTPS, Telnet (23), TR-069 (7547), UPnP IGD (`/rootDesc.xml`), default-firmware CVE hints. |
+| `android-probe` | active | Discover Android devices on the LAN via ADB port 5555 and mDNS `_adb._tcp`. Developer debug mode exposed over ADB = CRITICAL. |
+| `ios-probe` | active | Discover iOS devices on the LAN via iTunes sync port 62078 and Bonjour/mDNS. Jailbreak SSH indicators (Cydia repo, OpenSSH banner) = HIGH. |
+| `device-posture` | detective | Post-propagation device assessment: privilege level (`id`/`whoami`), sandbox/container detection, local services on `127.0.0.1` (`ss -tlnp` → `netstat` → `/proc/net/tcp` fallback chain), WiFi/BT adapter presence, ARP peer discovery via `/proc/net/arp` → pivot targets. |
+| `privesc-exploit` | intrusive | Attempt local privilege escalation — SUID GTFOBins, sudo NOPASSWD, default-password spray (≤5 attempts, `_SPRAY_MAX`), kernel CVE detection (DirtyPipe/DirtyCow/OverlayFS/PwnKit/Baron Samedit). On success: runs `id` only (verification), writes one labelled marker file to `/tmp/SECTEST_PRIVESC_PROOF_<pid>_<ts>.txt`, adds `shell-exec` relay to `pivot_targets`. No persistent shell, no data exfil. |
+| `router-auth` | intrusive | Firmware-specific default credential testing on router/firewall admin panels (OpenWRT, DD-WRT, MikroTik, pfSense, ASUS, TP-Link, D-Link, Netgear, Zyxel, …). HTTP Basic Auth + form POST. ≤6 attempts per host, 1 s delay between attempts. |
+
+### Pivot propagation from on-site footholds
+
+When `wifi-probe` finds a vulnerable network, it appends:
+- `{"host": <gateway_ip>, "port": 80, "via": "wifi-probe:gateway"}` — router scan
+- `{"kind": "netrange", "cidr": <local_cidr>, "via": "wifi-probe:local-subnet"}` — LAN sweep
+
+When `bluetooth-probe` finds a shell-capable BLE device, it appends:
+- `{"relay": {"type": "ble-uart", "addr": <bt_addr>}}` — BLE UART relay
+
+When `privesc-exploit` gains root, it appends:
+- `{"relay": {"type": "shell-exec"}}` — root shell relay for further pivot
+
+All pivot entries are processed by `_fanout_pivots()` in the orchestrator, which
+scope-checks every candidate host before dispatching modules.
 
 ## LLM briefing
 

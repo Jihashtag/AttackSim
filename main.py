@@ -96,16 +96,18 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--intensity", default=None,
                    choices=["detective", "active", "intrusive", "proof", "fuzz"],
                    help="How aggressive the run may be (default 'active'). 'intrusive' and above "
-                        "REQUIRE a --scope allow-list. 'proof' is implied by --prove-access; "
-                        "'fuzz' enables the bounded, rate-limited fuzzing tier.")
+                        "require explicit confirmation (--yes or interactive prompt); --scope is "
+                        "optional and further narrows the allowed target set. 'proof' is implied "
+                        "by --prove-access; 'fuzz' enables the bounded, rate-limited fuzzing tier.")
     p.add_argument("--scope", action="append", default=None,
-                   help="Authorised target host, CIDR, or .domain suffix (repeatable). Mandatory "
-                        "for intrusive/proof/fuzz runs; active modules refuse out-of-scope hosts.")
+                   help="Optional: restrict active modules to this host, CIDR, or .domain suffix "
+                        "(repeatable). Scope defaults to the target itself; pass --scope to narrow "
+                        "further. Required by --scope-file; honoured on every intrusive/fuzz request.")
     p.add_argument("--scope-file", dest="scope_file", default=None,
                    help="File with one --scope token per line (# comments allowed).")
     p.add_argument("--spray", action="store_true",
                    help="Enable lockout-aware default-credential spraying against discovered "
-                        "services (requires --intensity intrusive + --scope).")
+                        "services (requires --intensity intrusive).")
     p.add_argument("--canary-url", dest="canary_url", default=None,
                    help="Operator-controlled callback URL for active SSRF confirmation; the only "
                         "thing fetched back is the toolkit's own labelled canary token.")
@@ -1652,8 +1654,8 @@ def _run(target, selected, args, jobs: int = 1, resume=None) -> int:
                           f"CVE(s) in the last 5 years.", file=sys.stderr)
 
                     if getattr(args, "cve_test", False):
-                        # Determine target host/port for testing — prefer URL host for
-                        # web CVEs, fall back to primary target host.
+                        # Primary target host — used as fallback when a CVE can't be
+                        # mapped to a specific service port.
                         t_host = getattr(target, "host", "") or ""
                         if not t_host and getattr(target, "url", None):
                             from urllib.parse import urlparse as _up
@@ -1661,6 +1663,29 @@ def _run(target, selected, args, jobs: int = 1, resume=None) -> int:
                         t_port = (getattr(target, "port", None) or
                                   (getattr(target, "ports", None) or [80])[0]
                                   if hasattr(target, "ports") else 80)
+
+                        # Build CVE-to-location map from findings already collected.
+                        # When a module (e.g. http2-rapid-reset) references a CVE in its
+                        # findings, use that finding's host:port for the exploit plan so the
+                        # PoC targets the correct service port instead of the primary port.
+                        import re as _re
+                        _CVE_LOC_PAT = _re.compile(r'CVE-\d{4}-\d{3,7}', _re.IGNORECASE)
+                        _cve_to_loc: dict = {}
+                        for _res in results:
+                            for _fnd in getattr(_res, "findings", []) or []:
+                                if (_fnd.severity or "INFO") == "INFO":
+                                    continue
+                                _loc = getattr(_fnd, "location", "") or ""
+                                if not _loc:
+                                    continue
+                                _last = _loc.rfind(":")
+                                if _last == -1 or not _loc[_last + 1:].isdigit():
+                                    continue
+                                _fh, _fp = _loc[:_last], int(_loc[_last + 1:])
+                                for _ref in (getattr(_fnd, "references", []) or []):
+                                    _cm = _CVE_LOC_PAT.fullmatch(str(_ref).strip().upper())
+                                    if _cm and _cm.group(0).upper() not in _cve_to_loc:
+                                        _cve_to_loc[_cm.group(0).upper()] = (_fh, _fp)
 
                         # Check if LLM is available for script generation
                         has_llm = False
@@ -1674,10 +1699,48 @@ def _run(target, selected, args, jobs: int = 1, resume=None) -> int:
                             except Exception:
                                 pass
 
-                        plans = exploit_planner.prioritize(
-                            cve_records, t_host, t_port,
-                            max_plans=getattr(args, "cve_max", 10),
-                            has_llm=has_llm)
+                        # Group CVEs by their best-known target host:port.
+                        # Priority: (1) location from an existing finding referencing the CVE,
+                        # (2) service host:port captured by extract_services_from_results,
+                        # (3) primary target fallback.
+                        from collections import defaultdict as _defaultdict
+                        _total_max = getattr(args, "cve_max", 10)
+                        _cve_groups: dict = _defaultdict(list)
+                        for _cve in cve_records:
+                            _cid = _cve.cve_id.upper()
+                            if _cid in _cve_to_loc:
+                                _gkey = _cve_to_loc[_cid]
+                            else:
+                                # Match CVE product against service host:port
+                                _svc_key = None
+                                for _svc in services:
+                                    _sh = _svc.get("host", "")
+                                    _sp = _svc.get("port", "")
+                                    if (_sh and _sp and str(_sp).isdigit() and
+                                            _cve.product.lower() in _svc.get("product", "").lower()):
+                                        _svc_key = (_sh, int(_sp))
+                                        break
+                                _gkey = _svc_key or (t_host, t_port)
+                            _cve_groups[_gkey].append(_cve)
+
+                        # Create plans per group (budget split evenly; each group gets
+                        # at least 1 slot so single-CVE groups are never crowded out).
+                        _n_groups = max(1, len(_cve_groups))
+                        _per_group = max(1, _total_max // _n_groups)
+                        _all_plans = []
+                        for (_gh, _gp), _gcves in _cve_groups.items():
+                            _gh = _gh or t_host
+                            _gp = int(_gp) if _gp else t_port
+                            _gp = _gp or 80
+                            _gplans = exploit_planner.prioritize(
+                                _gcves, _gh, _gp,
+                                max_plans=_per_group + (1 if len(_gcves) == 1 else 0),
+                                has_llm=has_llm)
+                            _all_plans.extend(_gplans)
+
+                        # Final sort + cap
+                        _all_plans.sort(key=lambda p: -p.priority)
+                        plans = _all_plans[:_total_max]
 
                         if plans:
                             print(exploit_planner.summarize_plans(plans), file=sys.stderr)
@@ -1696,11 +1759,13 @@ def _run(target, selected, args, jobs: int = 1, resume=None) -> int:
                                           f"none confirmed on target",
                                     severity="INFO",
                                     location=t_host or str(target.raw),
-                                    detail="Automated CVE verification scripts ran but found no "
-                                           "confirming evidence on the live target. The target may "
-                                           "be patched or the CVE requires specific conditions not "
-                                           "present. Manual verification recommended.",
-                                    evidence=f"plans={len(plans)} cves={len(cve_records)}",
+                                    detail=(f"Automated CVE verification ran {len(plans)} plan(s) "
+                                            f"across {_n_groups} service target(s) but found no "
+                                            f"confirming evidence. The target may be patched or "
+                                            f"CVEs require specific conditions not present. "
+                                            f"Manual verification recommended."),
+                                    evidence=(f"plans={len(plans)} cves={len(cve_records)} "
+                                              f"service-groups={_n_groups}"),
                                 ))
                             results.append(autopwn)
                         else:

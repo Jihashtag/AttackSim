@@ -74,7 +74,6 @@ reads local files only and is never gated.
 ./run_all.sh --json report/out.json
 ./run_all.sh --sarif report/out.sarif
 ./run_all.sh --html report/out.html
-./run_all.sh --install                               # best-effort install optional extras
 ./run_all.sh --llm --model gemma2                    # local-LLM attacker briefing
 ./run_all.sh --only jwt-forger,secret-harvester      # run selected modules
 ```

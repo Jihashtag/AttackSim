@@ -230,7 +230,7 @@ subprocess.run(["ls"])
         plan = self._make_plan(test_strategy="banner_match")
         result = execute_plans([plan], auto_confirm=True)
         assert result.exploited is True
-        assert any("version-confirmed" in f.title for f in result.findings)
+        assert any("version confirmed" in f.title for f in result.findings)
 
     def test_execute_plans_skips_unconfirmed(self):
         plan = self._make_plan(test_strategy="script_poc", requires_confirmation=True)

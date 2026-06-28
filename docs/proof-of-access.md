@@ -58,6 +58,19 @@ Creates one clearly-labelled principal that **grants nothing and holds no usable
 
 See [cloud-assessment.md](cloud-assessment.md) for full cloud proof details.
 
+### Local privilege escalation (`privesc-exploit`)
+
+When `privesc-exploit` (intrusive tier) gains root on a local target, it writes:
+
+```
+/tmp/SECTEST_PRIVESC_PROOF_<pid>_<ts>.txt
+```
+
+Content: labelled marker (`AUTHORIZED-ASSESSMENT`) plus the escalation method (SUID,
+sudo, CVE ID, or password spray) and the output of `id` confirming root. No persistent
+shell is left open, no data is exfiltrated, no config is changed. The file persists so
+the blue team can verify the escalation path.
+
 ## 360° lateral sweep from proven footholds
 
 When `access-prover` **proves** access to a device (CRITICAL/HIGH proof), the toolkit

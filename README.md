@@ -35,8 +35,9 @@ See [docs/quickstart.md](docs/quickstart.md) for full examples.
 
 ## Key features
 
-- **80 registered attack modules** covering repos, URLs, credentials, host:port, network
-  ranges, local introspection, cloud, and network appliances
+- **101 registered attack modules** covering repos, URLs, credentials, host:port, network
+  ranges, local introspection, on-site/physical (WiFi, Bluetooth, router, Android/iOS),
+  cloud, and network appliances
 - **5 intensity tiers** (detective → active → intrusive → proof → fuzz) with mandatory
   confirmation (``--yes`` or interactive) at intrusive+
 - **Credential guard** — scrubs all ambient credentials before module execution
@@ -62,7 +63,7 @@ See [docs/quickstart.md](docs/quickstart.md) for full examples.
 |---|---|
 | [Quick Start](docs/quickstart.md) | Installation, common examples, parallelism, optional extras |
 | [Targets](docs/targets.md) | Target kinds, resolution precedence, port specs, batch targets |
-| [Modules](docs/modules.md) | All 67 modules by category (repo, active, intrusive, cloud, fuzz, proof) |
+| [Modules](docs/modules.md) | All 101 modules by category (repo, active, intrusive, on-site, cloud, fuzz, proof) |
 | [Intensity & Scope](docs/intensity-and-scope.md) | Tier definitions, scope enforcement, profiles |
 | [CLI Reference](docs/cli-reference.md) | Complete flag reference and exit codes |
 | [Credential Guard](docs/credential-guard.md) | How credentials are neutralised |
@@ -70,7 +71,7 @@ See [docs/quickstart.md](docs/quickstart.md) for full examples.
 | [Cloud Assessment](docs/cloud-assessment.md) | Credentialed cloud path, IAM analysis, grant-nothing proofs |
 | [CVE Pipeline](docs/cve-pipeline.md) | CVE resolution, exploit planning, PoC generation |
 | [Propagation](docs/propagation.md) | Self-deployment onto proven footholds |
-| [Local Introspection](docs/local-introspection.md) | Container-escape detection, rootkit IOCs |
+| [Local Introspection](docs/local-introspection.md) | Container-escape detection, rootkit IOCs, on-site/physical assessment (WiFi, Bluetooth, router, Android/iOS, privesc) |
 | [Output & CI](docs/output-and-ci.md) | Report formats, attack chains, baseline drift, CI gating |
 | [Architecture](docs/architecture.md) | Project layout, module contract, data models, orchestration flow |
 | [Safety](docs/safety.md) | Design principles, what is forbidden, enforcement layers |

@@ -18,7 +18,7 @@ only ever **create** harmless, clearly-labelled artifacts.
 - Data destruction or modification
 - Encryption / ransomware
 - Denial of service
-- Privilege escalation
+- Unauthorized privilege escalation (persistent backdoors, shell left open, data exfiltration); the `privesc-exploit` module at `--intensity intrusive` only runs `id` for verification on explicitly authorized local targets and writes a single labelled marker file — no persistent access
 - Rootkits / implants / backdoors
 - Credential minting (no `CreateAccessKey`, `CreateLoginProfile`, etc.)
 

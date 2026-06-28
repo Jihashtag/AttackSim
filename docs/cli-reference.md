@@ -16,6 +16,7 @@ Complete list of all command-line flags.
 | `--url URL` | Live endpoint to probe |
 | `--host-port HOST:PORT` | Explicit host:port target |
 | `--cidr RANGE` | Network range (CIDR, last-octet range, or full-IP range) |
+| `--email ADDR_OR_DOMAIN` | Email address or domain to probe: resolves MX, probes SMTP ports (25, 587, 465), and runs DNS posture checks (SPF/DMARC/MTA-STS) |
 | `--local` | Read-only host introspection |
 | `--use-discovered-cloud-creds` | Activate credentialed cloud assessment |
 | `--targets-file PATH` | Batch-scan multiple targets from file (one per line, max 256) |
@@ -25,7 +26,7 @@ Complete list of all command-line flags.
 | Flag | Description |
 |---|---|
 | `--jwt TOKEN` | Present a JWT for validation or endpoint probing |
-| `--bearer TOKEN` | Alias for `--jwt` |
+| `--bearer TOKEN` | Bearer token for active web modules (sets `Authorization: Bearer …`); stored in the same slot as `--jwt` |
 | `--api-key KEY` | Present an API key |
 | `--username USER` | Username for credential testing |
 | `--password PASS` | Password for credential testing |
@@ -38,8 +39,8 @@ Complete list of all command-line flags.
 
 | Flag | Description |
 |---|---|
-| `--intensity TIER` | Minimum intensity: `detective`, `active` (default), `intrusive`, `proof`, `fuzz` |
-| `--scope HOST\|CIDR\|.DOMAIN` | Optional scope narrowing (repeatable; restricts scanning to listed entries) |
+| `--intensity TIER` | Minimum intensity: `detective`, `active` (default), `intrusive`, `proof`, `fuzz`. `intrusive` and above require `--yes` or interactive confirmation; `--scope` is optional. |
+| `--scope HOST\|CIDR\|.DOMAIN` | Optional scope narrowing (repeatable). Scope defaults to the target itself; pass `--scope` to restrict further. Required when using `--scope-file`. |
 | `--scope-file PATH` | File with scope entries (one per line) |
 | `--yes` | Non-interactive confirmation for intrusive+ intensity (skips the `[y/N]` prompt) |
 | `--profile NAME` | Preset: `quick`, `standard`, `deep`, `stealth` |
@@ -47,7 +48,7 @@ Complete list of all command-line flags.
 | `--only MODULE[,MODULE]` | Run only the listed modules |
 | `--ports SPEC` | Port spec for host:port targets (single, range, or comma list) |
 | `--max-hosts N` | Cap range expansion for CIDR targets |
-| `--spray` | Enable default-credential spraying (required for `default-creds` module) |
+| `--spray` | Enable default-credential spraying (requires `--intensity intrusive`) |
 | `--resume PATH` | Resume an interrupted sweep from state file |
 | `--no-cve-enrich` | Disable the offline CVE correlation post-pass |
 
@@ -70,6 +71,7 @@ Complete list of all command-line flags.
 | `--propagate-script` | Deploy scanner onto proven footholds and run from inside |
 | `--propagate-depth N` | Max propagation hops (default: 2; decremented each hop) |
 | `--propagate` | Enable relay-through-foothold scanning |
+| `--propagate-strategy {auto,native,zipapp,source}` | Force a specific payload strategy for `--propagate-script` (default: `auto` — tries native binary → zipapp → source tar.gz) |
 | `--host-subnet CIDR` | Explicit /24 subnet context for propagated scans |
 
 ## Network & proxy
@@ -77,6 +79,7 @@ Complete list of all command-line flags.
 | Flag | Description |
 |---|---|
 | `--proxy URL` | Route all HTTP/TCP traffic through HTTP-CONNECT or SOCKS5 proxy |
+| `--proxy-list SPEC` | Comma-separated proxy list or `@/path/to/file` (one per line); cycles entries per request. Overrides `--proxy` when set. |
 | `--pivot-proxy URL` | Proxy for pivot/relay traffic only (overrides `--proxy` for relays) |
 | `--nse-scripts CATEGORIES` | Opt-in NSE script categories (only SAFE allowed) |
 | `--no-imds` | Skip link-local metadata probe (env vars + on-disk profiles only) |
@@ -116,7 +119,6 @@ Complete list of all command-line flags.
 | Flag | Description |
 |---|---|
 | `--list-modules` | Print the live module catalogue and exit |
-| `--install` | Best-effort install optional extras |
 
 ## Exit codes
 
