@@ -25,20 +25,24 @@ security_test/
 │   ├── cve_resolver.py       # library: CVE lookup via NVD (--cve-lookup)
 │   ├── exploit_planner.py    # library: CVE test-plan prioritization
 │   ├── exploit_generator.py  # library: PoC script generation + sandbox execution
-│   ├── ...                   # 67 module files (one per attack technique)
+│   ├── ...                   # 101 module files (one per attack technique)
 ├── sandbox/
 │   ├── credential_guard.py   # scrubs ambient credentials before module run
 │   ├── scope_guard.py        # scope allow-list enforcement
 │   ├── budget.py             # global request budget (anti-DoS ceiling)
 │   ├── oob_listener.py       # out-of-band confirmation listener (--oob-listen)
 │   ├── cloud_creds.py        # ambient cloud credential discovery
+│   ├── cloud_creds_extended.py  # extended cloud provider credential helpers
 │   ├── relay.py              # foothold relays (Docker / proxy / kubelet / K8s API)
 │   ├── ledger.py             # proof-of-access ledger (per-hop path identification)
 │   ├── propagate.py          # self-propagation onto proven footholds
+│   ├── propagate_cloud.py    # cloud-specific propagation (EC2/GCE/Azure VMs)
+│   ├── propagate_pack.py     # package-up scanner for remote deployment
+│   ├── propagate_transport.py  # transport layer for remote propagation
 │   └── resources.py          # adaptive parallelism (CPU/memory detection)
 ├── data/
-│   ├── cve/feed.json         # bundled offline CVE subset (replaceable)
-│   ├── cve/epss.json         # offline EPSS score subset
+│   ├── cve/feed.json         # bundled offline CVE feed: 68 records, 18 product families
+│   ├── cve/epss.json         # offline EPSS exploit-probability scores
 │   ├── cve/attack_map.json   # category→ATT&CK technique mapping
 │   ├── cve/cpe_aliases.json  # 86-product CPE alias table (product→vendor)
 │   ├── cve/audit_log/        # audit trail of generated exploit scripts
@@ -47,6 +51,7 @@ security_test/
 │   ├── creds/default_creds.json  # curated default-credential database
 │   ├── fuzz/payloads.txt     # reviewed benign fuzz corpus
 │   ├── iam/privesc_rules.json    # IAM privilege-escalation detection rules
+│   ├── payloads/             # additional attack payload resources
 │   ├── takeover/fingerprints.json  # subdomain-takeover fingerprints
 │   └── wordlists/web_common.txt   # content-discovery wordlist
 ├── policies/                 # grant-nothing policy documents (AWS/GCP/Azure)
@@ -58,7 +63,7 @@ security_test/
 ├── report/
 │   ├── reporter.py           # console / JSON / Markdown / SARIF / HTML rendering
 │   └── state.py              # resume-state persistence (--resume)
-├── tests/                    # pytest suite (476+ tests)
+├── tests/                    # pytest suite (682+ tests)
 └── docs/                     # this documentation
 ```
 
@@ -97,9 +102,15 @@ class Finding:
 ```python
 @dataclass
 class ExploitResult:
-    success: bool       # True = EXPLOITED, False = MITIGATED
-    findings: list[Finding]
-    summary: str        # one-line outcome
+    name: str                            # module NAME constant
+    description: str                     # module DESCRIPTION constant
+    exploited: bool                      # True = EXPLOITED, False = MITIGATED
+    findings: list[Finding] = field(default_factory=list)
+    attacker_value: str = ""             # what the attacker gains if exploited
+    mitigation: str = ""                 # remediation guidance
+    summary: str = ""                    # optional one-line outcome note
+    error: Optional[str] = None          # set when the module fails hard
+    tool_available: bool = True          # False when an optional binary is absent
 ```
 
 ## Orchestration flow

@@ -16,10 +16,10 @@ from exploits.cve_resolver import (
     load_cpe_aliases, resolve_cpe, resolve_for_service,
 )
 from exploits.exploit_planner import (
-    TestPlan, _assign_strategy, _infer_protocol, _should_skip, prioritize, summarize_plans,
+    CveTestPlan, _assign_strategy, _infer_protocol, _should_skip, prioritize, summarize_plans,
 )
 from exploits.exploit_generator import (
-    TestResult, _generate_nuclei_template, _select_builtin_template,
+    CveVerifyResult, _generate_nuclei_template, _select_builtin_template,
     _validate_script, execute_plans,
 )
 
@@ -163,7 +163,7 @@ class TestExploitPlanner:
 # ---------------------------------------------------------------------------
 
 class TestExploitGenerator:
-    def _make_plan(self, **kwargs) -> TestPlan:
+    def _make_plan(self, **kwargs) -> CveTestPlan:
         cve = CVERecord(
             cve_id="CVE-2021-42013", product="apache httpd", severity="CRITICAL",
             cvss=9.8, epss=0.95, summary="Path traversal and RCE",
@@ -176,7 +176,7 @@ class TestExploitGenerator:
             "requires_confirmation": False,
         }
         defaults.update(kwargs)
-        return TestPlan(**defaults)
+        return CveTestPlan(**defaults)
 
     def test_generate_nuclei_template_path_traversal(self):
         plan = self._make_plan()

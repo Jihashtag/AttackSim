@@ -614,7 +614,7 @@ def _oci_api_headers(cred: dict, method: str = "GET", url: str = "", headers: di
         return headers
 
     import datetime
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     date_str = now.strftime("%a, %d %b %Y %H:%M:%S GMT")
     headers["date"] = date_str
 

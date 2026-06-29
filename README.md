@@ -37,7 +37,8 @@ See [docs/quickstart.md](docs/quickstart.md) for full examples.
 
 - **101 registered attack modules** covering repos, URLs, credentials, host:port, network
   ranges, local introspection, on-site/physical (WiFi, Bluetooth, router, Android/iOS),
-  cloud, and network appliances
+  cloud, network appliances, and 68-CVE offline feed (OpenSSH, bash, Linux kernel, Windows,
+  macOS, Apache, nginx, OpenSSL)
 - **5 intensity tiers** (detective → active → intrusive → proof → fuzz) with mandatory
   confirmation (``--yes`` or interactive) at intrusive+
 - **Credential guard** — scrubs all ambient credentials before module execution

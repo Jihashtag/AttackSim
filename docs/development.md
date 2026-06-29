@@ -10,7 +10,7 @@ pip install -e ".[dev]"     # pytest + ruff + mypy (optional)
 ## Running tests
 
 ```bash
-pytest                       # unit + local-server integration tests (476+ tests)
+pytest                       # unit + local-server integration tests (682+ tests)
 ruff check .                 # lint
 mypy .                       # type-check (optional)
 ```
@@ -47,9 +47,12 @@ def run(target) -> ExploitResult:
     findings = []
     # ... attack logic ...
     return ExploitResult(
-        success=bool(findings),
+        name=NAME,
+        description=DESCRIPTION,
+        exploited=bool(findings),
         findings=findings,
-        summary="outcome description",
+        attacker_value="what the attacker can do with this" if findings else "",
+        mitigation="how to fix it",
     )
 ```
 
