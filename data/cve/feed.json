@@ -1,117 +1,451 @@
 {
-    "_about": "Bundled OFFLINE CVE subset for product+version enrichment. This is a small, PINNED, illustrative feed shipped with the toolkit so enrichment works with no network and no extra runtime dependency. Replace/extend it with a full OSV or NVD mirror (same record shape) for production use. AUTHORIZED-ASSESSMENT data — safe to delete.",
-    "_schema": {
-        "product": "lowercase product name matched against service banners/version strings",
-        "vendor": "informational",
-        "ranges": "list of {introduced, fixed}; a version V is affected if introduced<=V<fixed (either bound may be omitted)",
-        "cve": "CVE identifier",
-        "severity": "CRITICAL|HIGH|MEDIUM|LOW",
-        "cvss": "base score (informational)",
-        "summary": "one-line description",
-        "references": "advisory URLs"
-    },
-    "records": [
-        {
-            "product": "openssh",
-            "vendor": "OpenBSD",
-            "ranges": [
-                {
-                    "introduced": "0",
-                    "fixed": "9.3.0.2"
-                }
-            ],
-            "cve": "CVE-2023-38408",
-            "severity": "CRITICAL",
-            "cvss": 9.8,
-            "summary": "ssh-agent PKCS#11 remote code execution via forwarded agent.",
-            "references": [
-                "https://nvd.nist.gov/vuln/detail/CVE-2023-38408"
-            ]
-        },
-        {
-            "product": "openssh",
-            "vendor": "OpenBSD",
-            "ranges": [
-                {
-                    "introduced": "8.5",
-                    "fixed": "9.8"
-                }
-            ],
-            "cve": "CVE-2024-6387",
-            "severity": "HIGH",
-            "cvss": 8.1,
-            "summary": "regreSSHion: signal-handler race condition enables unauthenticated RCE.",
-            "references": [
-                "https://nvd.nist.gov/vuln/detail/CVE-2024-6387"
-            ]
-        },
-        {
-            "product": "redis",
-            "vendor": "Redis",
-            "ranges": [
-                {
-                    "introduced": "0",
-                    "fixed": "6.2.7"
-                }
-            ],
-            "cve": "CVE-2022-24735",
-            "severity": "HIGH",
-            "cvss": 7.0,
-            "summary": "Lua script sandbox escape allowing code execution in the Redis process.",
-            "references": [
-                "https://nvd.nist.gov/vuln/detail/CVE-2022-24735"
-            ]
-        },
-        {
-            "product": "nginx",
-            "vendor": "F5",
-            "ranges": [
-                {
-                    "introduced": "0",
-                    "fixed": "1.21.0"
-                }
-            ],
-            "cve": "CVE-2021-23017",
-            "severity": "HIGH",
-            "cvss": 7.7,
-            "summary": "Off-by-one heap write in the DNS resolver can lead to RCE.",
-            "references": [
-                "https://nvd.nist.gov/vuln/detail/CVE-2021-23017"
-            ]
-        },
-        {
-            "product": "apache httpd",
-            "vendor": "Apache",
-            "ranges": [
-                {
-                    "introduced": "2.4.49",
-                    "fixed": "2.4.51"
-                }
-            ],
-            "cve": "CVE-2021-42013",
-            "severity": "CRITICAL",
-            "cvss": 9.8,
-            "summary": "Path traversal and RCE via mod_cgi when files outside the doc root are reachable.",
-            "references": [
-                "https://nvd.nist.gov/vuln/detail/CVE-2021-42013"
-            ]
-        },
-        {
-            "product": "openssl",
-            "vendor": "OpenSSL",
-            "ranges": [
-                {
-                    "introduced": "3.0.0",
-                    "fixed": "3.0.7"
-                }
-            ],
-            "cve": "CVE-2022-3602",
-            "severity": "HIGH",
-            "cvss": 7.5,
-            "summary": "X.509 email-address punycode buffer overflow (stack).",
-            "references": [
-                "https://nvd.nist.gov/vuln/detail/CVE-2022-3602"
-            ]
-        }
-    ]
+  "_about": "Pinned offline CVE feed — CRITICAL/HIGH CVEs for openssh, bash, linux kernel, windows, macos, apache httpd, nginx, openssl, and common system tools. Covers regreSSHion, Shellshock, Dirty Pipe/COW (copy-fail), EternalBlue, BlueKeep, Zerologon, PrintNightmare, Follina, Heartbleed, Terrapin, FragAttacks (dirty-frag), PwnKit, Baron Samedit, and more. Last updated: 2026-06-29.",
+  "_schema": {
+    "product": "lowercase product name matched against service banners/version strings",
+    "vendor": "informational",
+    "ranges": "list of {introduced, fixed}; a version V is affected if introduced<=V<fixed (either bound may be omitted)",
+    "cve": "CVE identifier",
+    "severity": "CRITICAL|HIGH|MEDIUM|LOW",
+    "cvss": "base score (informational)",
+    "summary": "one-line description",
+    "aliases": "well-known vulnerability name(s) — for display and search",
+    "references": "advisory URLs"
+  },
+  "records": [
+
+    { "product": "openssh", "vendor": "OpenBSD",
+      "ranges": [{"introduced": "8.5", "fixed": "9.8"}],
+      "cve": "CVE-2024-6387", "severity": "HIGH", "cvss": 8.1,
+      "aliases": ["regreSSHion"],
+      "summary": "regreSSHion: signal-handler race condition in sshd enables unauthenticated RCE as root — glibc async-signal-safe regression re-introduced in 8.5p1.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2024-6387", "https://www.qualys.com/2024/07/01/cve-2024-6387/regresshion.txt"] },
+
+    { "product": "openssh", "vendor": "OpenBSD",
+      "ranges": [{"introduced": "8.5", "fixed": "9.8"}],
+      "cve": "CVE-2024-6409", "severity": "MEDIUM", "cvss": 6.9,
+      "aliases": ["regreSSHion-privsep"],
+      "summary": "Race condition in async signal handler in the OpenSSH privsep child process — lower-privilege variant of CVE-2024-6387.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2024-6409"] },
+
+    { "product": "openssh", "vendor": "OpenBSD",
+      "ranges": [{"introduced": "0", "fixed": "9.3.0.2"}],
+      "cve": "CVE-2023-38408", "severity": "CRITICAL", "cvss": 9.8,
+      "summary": "ssh-agent PKCS#11 RCE: a remote attacker who can forward an ssh-agent socket loads arbitrary PKCS#11 providers, achieving code execution in the agent.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2023-38408"] },
+
+    { "product": "openssh", "vendor": "OpenBSD",
+      "ranges": [{"introduced": "0", "fixed": "9.6"}],
+      "cve": "CVE-2023-51385", "severity": "HIGH", "cvss": 7.2,
+      "summary": "OS command injection via shell metacharacters in a hostname when ProxyCommand or ProxyJump is configured — malicious host entries execute arbitrary commands.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2023-51385"] },
+
+    { "product": "openssh", "vendor": "OpenBSD",
+      "ranges": [{"introduced": "0", "fixed": "9.6"}],
+      "cve": "CVE-2023-48795", "severity": "MEDIUM", "cvss": 5.9,
+      "aliases": ["Terrapin"],
+      "summary": "Terrapin: SSH prefix truncation attack strips handshake messages via sequence-number manipulation using ChaCha20-Poly1305 or CBC+ETM, downgrading security extensions.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2023-48795", "https://terrapin-attack.com"] },
+
+    { "product": "openssh", "vendor": "OpenBSD",
+      "ranges": [{"introduced": "0", "fixed": "8.8"}],
+      "cve": "CVE-2021-41617", "severity": "HIGH", "cvss": 7.0,
+      "summary": "Privilege escalation when AuthorizedKeysCommand or AuthorizedPrincipalsCommand runs as a non-sshd user — supplementary group memberships are not cleared properly.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2021-41617"] },
+
+    { "product": "openssh", "vendor": "OpenBSD",
+      "ranges": [{"introduced": "0", "fixed": "8.4"}],
+      "cve": "CVE-2020-15778", "severity": "HIGH", "cvss": 7.8,
+      "summary": "scp command injection via shell metacharacters in the destination argument — untrusted server filenames execute arbitrary commands on the client.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2020-15778"] },
+
+    { "product": "openssh", "vendor": "OpenBSD",
+      "ranges": [{"introduced": "0", "fixed": "8.0"}],
+      "cve": "CVE-2019-6111", "severity": "MEDIUM", "cvss": 5.9,
+      "summary": "scp: a malicious server can overwrite arbitrary files on the client because the destination filenames are not validated against the requested names.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2019-6111"] },
+
+    { "product": "openssh", "vendor": "OpenBSD",
+      "ranges": [{"introduced": "0", "fixed": "7.8"}],
+      "cve": "CVE-2018-15473", "severity": "MEDIUM", "cvss": 5.3,
+      "summary": "Username enumeration via asymmetric timing — the server responds differently for valid vs. invalid usernames during public-key authentication.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2018-15473"] },
+
+    { "product": "openssh", "vendor": "OpenBSD",
+      "ranges": [{"introduced": "0", "fixed": "7.4"}],
+      "cve": "CVE-2016-10009", "severity": "MEDIUM", "cvss": 7.3,
+      "summary": "PKCS#11 module loading via agent forwarding allows a remote attacker to load arbitrary shared objects and execute code in the ssh-agent process.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2016-10009"] },
+
+    { "product": "bash", "vendor": "GNU",
+      "ranges": [{"introduced": "0", "fixed": "4.3.25"}],
+      "cve": "CVE-2014-6271", "severity": "CRITICAL", "cvss": 10.0,
+      "aliases": ["Shellshock"],
+      "summary": "Shellshock: bash executes trailing commands after function definitions exported in environment variables — RCE via CGI, DHCP, SSH forced-command, and any env-var injection vector.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2014-6271", "https://shellshocker.net"] },
+
+    { "product": "bash", "vendor": "GNU",
+      "ranges": [{"introduced": "0", "fixed": "4.3.26"}],
+      "cve": "CVE-2014-7169", "severity": "CRITICAL", "cvss": 10.0,
+      "aliases": ["Shellshock-7169"],
+      "summary": "Shellshock variant: parser state confusion bypasses the CVE-2014-6271 patch — arbitrary command execution through a different bash function-definition code path.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2014-7169"] },
+
+    { "product": "bash", "vendor": "GNU",
+      "ranges": [{"introduced": "0", "fixed": "4.3.27"}],
+      "cve": "CVE-2014-7186", "severity": "HIGH", "cvss": 7.5,
+      "aliases": ["Shellshock-7186"],
+      "summary": "Shellshock: out-of-bounds memory read in word-list processing enables memory corruption and code execution.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2014-7186"] },
+
+    { "product": "bash", "vendor": "GNU",
+      "ranges": [{"introduced": "0", "fixed": "4.3.28"}],
+      "cve": "CVE-2014-7187", "severity": "HIGH", "cvss": 7.5,
+      "aliases": ["Shellshock-7187"],
+      "summary": "Shellshock: off-by-one error in nested-function processing enables code execution via deeply nested bash constructs.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2014-7187"] },
+
+    { "product": "bash", "vendor": "GNU",
+      "ranges": [{"introduced": "0", "fixed": "4.3.27"}],
+      "cve": "CVE-2014-6278", "severity": "CRITICAL", "cvss": 10.0,
+      "aliases": ["Shellshock-Florian"],
+      "summary": "Florian's Shellshock: code execution bypassing both CVE-2014-6271 and CVE-2014-7169 patches via a distinct parser code path.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2014-6278"] },
+
+    { "product": "bash", "vendor": "GNU",
+      "ranges": [{"introduced": "0", "fixed": "5.2"}],
+      "cve": "CVE-2022-3715", "severity": "HIGH", "cvss": 7.8,
+      "summary": "Heap buffer overflow in bash via crafted command-line argument — enables local privilege escalation when bash runs in a privileged context.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2022-3715"] },
+
+    { "product": "linux kernel", "vendor": "Linux",
+      "ranges": [{"introduced": "3.15", "fixed": "6.6.14"}],
+      "cve": "CVE-2024-1086", "severity": "HIGH", "cvss": 7.8,
+      "summary": "nf_tables use-after-free via double-free in nft_verdict_init() — widely exploited LPE with public PoC, affects kernels 3.15–6.6.13.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2024-1086", "https://github.com/Notselwyn/CVE-2024-1086"] },
+
+    { "product": "linux kernel", "vendor": "Linux",
+      "ranges": [{"introduced": "0", "fixed": "6.6.10"}],
+      "cve": "CVE-2023-6931", "severity": "HIGH", "cvss": 7.8,
+      "summary": "perf_event_open: heap out-of-bounds write in samples_period validation enables local privilege escalation.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2023-6931"] },
+
+    { "product": "linux kernel", "vendor": "Linux",
+      "ranges": [{"introduced": "6.1", "fixed": "6.4"}],
+      "cve": "CVE-2023-3269", "severity": "HIGH", "cvss": 7.8,
+      "aliases": ["StackRot"],
+      "summary": "StackRot: maple tree node rotation use-after-free in memory management — unprivileged users can escalate to root via arbitrary kernel-memory read/write.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2023-3269"] },
+
+    { "product": "linux kernel", "vendor": "Linux",
+      "ranges": [{"introduced": "0", "fixed": "6.3.2"}],
+      "cve": "CVE-2023-32233", "severity": "HIGH", "cvss": 7.8,
+      "summary": "nf_tables: use-after-free via anonymous set with NFTA_SET_EXPR in a netfilter transaction enables local privilege escalation.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2023-32233"] },
+
+    { "product": "linux kernel", "vendor": "Linux",
+      "ranges": [{"introduced": "5.8", "fixed": "5.16.11"}],
+      "cve": "CVE-2022-0847", "severity": "HIGH", "cvss": 7.8,
+      "aliases": ["Dirty Pipe", "copy-fail"],
+      "summary": "Dirty Pipe (copy-fail): pipe_write() PIPE_BUF_FLAG_CAN_MERGE not cleared on new pipe pages — overwrites read-only file-backed pages, bypassing copy-on-write.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2022-0847", "https://dirtypipe.cm4all.com"] },
+
+    { "product": "linux kernel", "vendor": "Linux",
+      "ranges": [{"introduced": "0", "fixed": "5.16.10"}],
+      "cve": "CVE-2022-25636", "severity": "HIGH", "cvss": 7.8,
+      "summary": "nf_tables: heap out-of-bounds write in nft_fwd_dup_netdev_offload() enables local privilege escalation via crafted netfilter expressions.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2022-25636"] },
+
+    { "product": "linux kernel", "vendor": "Linux",
+      "ranges": [{"introduced": "0", "fixed": "5.12"}],
+      "cve": "CVE-2021-31440", "severity": "HIGH", "cvss": 7.0,
+      "summary": "eBPF verifier: incorrect integer range tracking allows a crafted BPF program to bypass bounds checks and achieve local privilege escalation.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2021-31440"] },
+
+    { "product": "linux kernel", "vendor": "Linux",
+      "ranges": [{"introduced": "0", "fixed": "5.11"}],
+      "cve": "CVE-2021-3493", "severity": "HIGH", "cvss": 7.8,
+      "summary": "Ubuntu overlayfs: unprivileged user in user namespace applies file capabilities to files — local privilege escalation on Ubuntu kernel builds.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2021-3493"] },
+
+    { "product": "linux kernel", "vendor": "Linux",
+      "ranges": [{"introduced": "0", "fixed": "4.8.3"}],
+      "cve": "CVE-2016-5195", "severity": "HIGH", "cvss": 7.8,
+      "aliases": ["Dirty COW", "dirty-cow"],
+      "summary": "Dirty COW: race condition in copy-on-write — unprivileged users write to read-only root-owned files; widely exploited, public PoC since disclosure.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2016-5195", "https://dirtycow.ninja"] },
+
+    { "product": "polkit", "vendor": "freedesktop",
+      "ranges": [{"introduced": "0", "fixed": "0.120"}],
+      "cve": "CVE-2021-4034", "severity": "HIGH", "cvss": 7.8,
+      "aliases": ["PwnKit"],
+      "summary": "PwnKit: pkexec argument-array corruption corrupts environment variables passed to execve() — any unprivileged user achieves root without knowing a password.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2021-4034"] },
+
+    { "product": "sudo", "vendor": "Todd C. Miller",
+      "ranges": [{"introduced": "1.8.2", "fixed": "1.9.5"}],
+      "cve": "CVE-2021-3156", "severity": "HIGH", "cvss": 7.8,
+      "aliases": ["Baron Samedit"],
+      "summary": "Baron Samedit: heap buffer overflow in sudo via 'sudoedit -s' with a backslash-terminated argument enables privilege escalation to root without the user's password.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2021-3156"] },
+
+    { "product": "wifi 802.11", "vendor": "IEEE",
+      "ranges": [],
+      "cve": "CVE-2020-24588", "severity": "MEDIUM", "cvss": 3.5,
+      "aliases": ["dirty-frag", "FragAttacks"],
+      "summary": "FragAttacks / dirty-frag: 802.11 accepts non-SPP A-MSDU frames — arbitrary network-packet injection by exploiting fragmentation and aggregation flaws in Wi-Fi drivers.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2020-24588", "https://fragattacks.com"] },
+
+    { "product": "wifi 802.11", "vendor": "IEEE",
+      "ranges": [],
+      "cve": "CVE-2020-24587", "severity": "MEDIUM", "cvss": 3.1,
+      "aliases": ["dirty-frag", "FragAttacks"],
+      "summary": "FragAttacks / dirty-frag: fragments from different 802.11 SAs are reassembled (mixed-key attack) enabling plaintext injection into victim connections.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2020-24587", "https://fragattacks.com"] },
+
+    { "product": "windows", "vendor": "Microsoft",
+      "ranges": [{"introduced": "10.0.0", "fixed": "10.0.19045.4780"}],
+      "cve": "CVE-2024-38063", "severity": "CRITICAL", "cvss": 9.8,
+      "summary": "Windows TCP/IP IPv6 RCE: unauthenticated, no user interaction, wormable via crafted IPv6 packets — disable IPv6 or apply August 2024 cumulative update.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2024-38063", "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-38063"] },
+
+    { "product": "windows", "vendor": "Microsoft",
+      "ranges": [{"introduced": "10.0.0", "fixed": "10.0.19045.4598"}],
+      "cve": "CVE-2024-30051", "severity": "HIGH", "cvss": 7.8,
+      "summary": "Windows DWM Core Library heap buffer overflow — exploited as privilege-escalation 0-day in QakBot campaigns prior to public disclosure.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2024-30051"] },
+
+    { "product": "microsoft outlook", "vendor": "Microsoft",
+      "ranges": [{"introduced": "16.0.0", "fixed": "16.0.17425.20176"}],
+      "cve": "CVE-2024-21413", "severity": "CRITICAL", "cvss": 9.8,
+      "summary": "Outlook RCE via crafted file:// hyperlink bypassing Protected View — causes NTLM hash leakage and potential remote code execution.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2024-21413"] },
+
+    { "product": "microsoft outlook", "vendor": "Microsoft",
+      "ranges": [{"introduced": "15.0.0", "fixed": "15.0.5539.1000"}],
+      "cve": "CVE-2023-23397", "severity": "CRITICAL", "cvss": 9.8,
+      "summary": "Outlook zero-click NTLM hash theft: crafted calendar reminder triggers a UNC path connection relaying Net-NTLMv2 hashes to attacker — APT28 0-day.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2023-23397"] },
+
+    { "product": "windows", "vendor": "Microsoft",
+      "ranges": [{"introduced": "10.0.0", "fixed": "10.0.22621.1992"}],
+      "cve": "CVE-2023-36884", "severity": "HIGH", "cvss": 8.3,
+      "summary": "Windows Office HTML RCE via specially crafted document — Storm-0978/RomCom ransomware 0-day; no patch on initial disclosure, mitigated by ASR rule.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2023-36884"] },
+
+    { "product": "msdt", "vendor": "Microsoft",
+      "ranges": [],
+      "cve": "CVE-2022-30190", "severity": "HIGH", "cvss": 7.8,
+      "aliases": ["Follina"],
+      "summary": "Follina: MSDT RCE via the ms-msdt URI scheme invoked from Office documents — no macros needed, preview pane triggers RCE (0-day, used by multiple nation-state APTs).",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2022-30190"] },
+
+    { "product": "windows print spooler", "vendor": "Microsoft",
+      "ranges": [{"introduced": "6.0.0", "fixed": "10.0.19043.1083"}],
+      "cve": "CVE-2021-34527", "severity": "CRITICAL", "cvss": 8.8,
+      "aliases": ["PrintNightmare"],
+      "summary": "PrintNightmare: Windows Print Spooler RpcAddPrinterDriverEx() RCE as SYSTEM and LPE — exploited within hours of PoC disclosure.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2021-34527"] },
+
+    { "product": "windows", "vendor": "Microsoft",
+      "ranges": [{"introduced": "6.0.0", "fixed": "10.0.17763.1518"}],
+      "cve": "CVE-2020-1472", "severity": "CRITICAL", "cvss": 10.0,
+      "aliases": ["Zerologon"],
+      "summary": "Zerologon: Netlogon cryptographic flaw (all-zero ClientChallenge) allows unauthenticated domain-controller takeover and full domain compromise in seconds.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2020-1472", "https://www.secura.com/blog/zero-logon"] },
+
+    { "product": "rdp", "vendor": "Microsoft",
+      "ranges": [{"introduced": "5.0.0", "fixed": "7.1.7601.24545"}],
+      "cve": "CVE-2019-0708", "severity": "CRITICAL", "cvss": 9.8,
+      "aliases": ["BlueKeep"],
+      "summary": "BlueKeep: Remote Desktop Services pre-auth RCE via crafted RDP packets — wormable, affects Windows XP/Vista/7/2003/2008, used by coin-miners and APTs.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2019-0708"] },
+
+    { "product": "smb", "vendor": "Microsoft",
+      "ranges": [{"introduced": "0", "fixed": "6.1.7601.23915"}],
+      "cve": "CVE-2017-0144", "severity": "CRITICAL", "cvss": 8.1,
+      "aliases": ["EternalBlue", "MS17-010"],
+      "summary": "EternalBlue: SMBv1 RCE via crafted Transaction2 request — weaponized by WannaCry (2017) and NotPetya; affects all unpatched Windows versions with SMBv1 enabled.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2017-0144"] },
+
+    { "product": "macos", "vendor": "Apple",
+      "ranges": [{"introduced": "14.0", "fixed": "14.3.1"}],
+      "cve": "CVE-2024-23296", "severity": "HIGH", "cvss": 8.8,
+      "summary": "RTKit memory corruption enables arbitrary kernel code execution — actively exploited 0-day affecting iOS/macOS Sonoma < 14.3.1.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2024-23296"] },
+
+    { "product": "webkit", "vendor": "Apple",
+      "ranges": [{"introduced": "0", "fixed": "617.1.17"}],
+      "cve": "CVE-2023-41993", "severity": "CRITICAL", "cvss": 9.8,
+      "summary": "WebKit: processing maliciously crafted web content leads to arbitrary code execution — actively exploited 0-day in Safari.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2023-41993"] },
+
+    { "product": "macos", "vendor": "Apple",
+      "ranges": [{"introduced": "13.0", "fixed": "13.5"}],
+      "cve": "CVE-2023-38606", "severity": "HIGH", "cvss": 7.8,
+      "summary": "XNU kernel: arbitrary kernel-memory write via crafted app — used as part of the TriangleDB / Operation Triangulation spyware chain (zero-click).",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2023-38606"] },
+
+    { "product": "macos", "vendor": "Apple",
+      "ranges": [{"introduced": "13.0", "fixed": "13.3.1"}],
+      "cve": "CVE-2023-28206", "severity": "HIGH", "cvss": 8.6,
+      "summary": "IOSurfaceAccelerator out-of-bounds write enables kernel code execution — actively exploited 0-day patched in macOS Ventura 13.3.1 / iOS 16.4.1.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2023-28206"] },
+
+    { "product": "macos", "vendor": "Apple",
+      "ranges": [{"introduced": "13.0", "fixed": "13.1"}],
+      "cve": "CVE-2022-42827", "severity": "HIGH", "cvss": 7.8,
+      "summary": "Kernel out-of-bounds write: app executes arbitrary code with kernel privileges — actively exploited 0-day (macOS Ventura < 13.1, iOS < 16.2).",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2022-42827"] },
+
+    { "product": "macos", "vendor": "Apple",
+      "ranges": [{"introduced": "12.0", "fixed": "12.5.1"}],
+      "cve": "CVE-2022-32894", "severity": "HIGH", "cvss": 7.8,
+      "summary": "macOS kernel privilege escalation via out-of-bounds write — actively exploited 0-day in macOS Monterey < 12.5.1.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2022-32894"] },
+
+    { "product": "macos", "vendor": "Apple",
+      "ranges": [{"introduced": "11.0", "fixed": "11.6"}],
+      "cve": "CVE-2021-30869", "severity": "HIGH", "cvss": 7.8,
+      "summary": "XPC type confusion: app executes arbitrary code with kernel privileges — exploited by Pegasus-adjacent toolchains in macOS Big Sur < 11.6.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2021-30869"] },
+
+    { "product": "apache httpd", "vendor": "Apache",
+      "ranges": [{"introduced": "2.4.0", "fixed": "2.4.60"}],
+      "cve": "CVE-2024-38475", "severity": "CRITICAL", "cvss": 9.1,
+      "summary": "mod_rewrite: OOB write via specially crafted URI patterns enables SSRF and path traversal to arbitrary filesystem locations or backend services.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2024-38475", "https://httpd.apache.org/security/vulnerabilities_24.html"] },
+
+    { "product": "apache httpd", "vendor": "Apache",
+      "ranges": [{"introduced": "2.4.0", "fixed": "2.4.60"}],
+      "cve": "CVE-2024-38474", "severity": "CRITICAL", "cvss": 9.1,
+      "summary": "mod_rewrite substitution encoding bypass — RewriteRule backreference encoding allows information disclosure and RCE in specific configurations.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2024-38474"] },
+
+    { "product": "apache httpd", "vendor": "Apache",
+      "ranges": [{"introduced": "2.4.0", "fixed": "2.4.56"}],
+      "cve": "CVE-2023-25690", "severity": "CRITICAL", "cvss": 9.8,
+      "summary": "HTTP request smuggling in mod_proxy via specially crafted request line — bypasses access controls and enables backend request smuggling or cache poisoning.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2023-25690"] },
+
+    { "product": "apache httpd", "vendor": "Apache",
+      "ranges": [{"introduced": "2.4.0", "fixed": "2.4.53"}],
+      "cve": "CVE-2022-23943", "severity": "CRITICAL", "cvss": 9.8,
+      "summary": "mod_sed: OOB read/write via crafted input on 32-bit systems — enables memory corruption and potential RCE when mod_sed is loaded.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2022-23943"] },
+
+    { "product": "apache httpd", "vendor": "Apache",
+      "ranges": [{"introduced": "2.4.0", "fixed": "2.4.53"}],
+      "cve": "CVE-2022-22721", "severity": "CRITICAL", "cvss": 9.1,
+      "summary": "LimitXMLRequestBody integer overflow on 32-bit systems — requests exceeding ~2GB trigger OOB write in the XML request parser.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2022-22721"] },
+
+    { "product": "apache httpd", "vendor": "Apache",
+      "ranges": [{"introduced": "2.4.49", "fixed": "2.4.50"}],
+      "cve": "CVE-2021-41773", "severity": "CRITICAL", "cvss": 7.5,
+      "summary": "Apache 2.4.49 path traversal and RCE via mod_cgi — unauthenticated access to files outside the document root; actively exploited 0-day within hours.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2021-41773"] },
+
+    { "product": "apache httpd", "vendor": "Apache",
+      "ranges": [{"introduced": "2.4.49", "fixed": "2.4.51"}],
+      "cve": "CVE-2021-42013", "severity": "CRITICAL", "cvss": 9.8,
+      "summary": "Path traversal bypass (CVE-2021-41773 incomplete fix) via .%2e encoding — RCE via mod_cgi in Apache 2.4.49-2.4.50.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2021-42013"] },
+
+    { "product": "apache httpd", "vendor": "Apache",
+      "ranges": [{"introduced": "2.4.0", "fixed": "2.4.48"}],
+      "cve": "CVE-2021-40438", "severity": "CRITICAL", "cvss": 9.0,
+      "summary": "mod_proxy SSRF: a crafted URI causes the server to forward requests to an arbitrary origin, enabling internal-network access and request forgery.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2021-40438"] },
+
+    { "product": "nginx", "vendor": "F5",
+      "ranges": [{"introduced": "0", "fixed": "1.21.0"}],
+      "cve": "CVE-2021-23017", "severity": "HIGH", "cvss": 7.7,
+      "summary": "Off-by-one heap write in the nginx DNS resolver via crafted UDP DNS response — potential RCE when the resolver directive is enabled.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2021-23017"] },
+
+    { "product": "nginx", "vendor": "F5",
+      "ranges": [{"introduced": "0", "fixed": "1.23.2"}],
+      "cve": "CVE-2022-41741", "severity": "HIGH", "cvss": 7.8,
+      "summary": "ngx_http_mp4_module: use-after-free via crafted mp4 file — enables worker process compromise or DoS when the mp4 module is compiled in.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2022-41741"] },
+
+    { "product": "nginx", "vendor": "F5",
+      "ranges": [{"introduced": "0", "fixed": "1.23.2"}],
+      "cve": "CVE-2022-41742", "severity": "HIGH", "cvss": 7.1,
+      "summary": "ngx_http_mp4_module: OOB read/write via crafted mp4 file — worker process crash or heap memory disclosure (stable branch < 1.22.1).",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2022-41742"] },
+
+    { "product": "nginx", "vendor": "F5",
+      "ranges": [{"introduced": "0", "fixed": "1.17.3"}],
+      "cve": "CVE-2019-9511", "severity": "HIGH", "cvss": 7.5,
+      "summary": "HTTP/2 Data Dribble DoS: many small frames over multiple streams cause excessive CPU consumption — affects nginx and other HTTP/2 stacks.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2019-9511"] },
+
+    { "product": "nginx", "vendor": "F5",
+      "ranges": [{"introduced": "0", "fixed": "1.17.3"}],
+      "cve": "CVE-2019-9513", "severity": "HIGH", "cvss": 7.5,
+      "summary": "HTTP/2 Resource Loop DoS: PRIORITY frame manipulation causes a resource loop exhausting CPU — affects nginx and multiple HTTP/2 implementations.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2019-9513"] },
+
+    { "product": "nginx", "vendor": "F5",
+      "ranges": [{"introduced": "0", "fixed": "1.15.6"}],
+      "cve": "CVE-2018-16845", "severity": "MEDIUM", "cvss": 6.1,
+      "summary": "ngx_http_mp4_module integer overflow via MDAT atom smaller than declared — causes worker process crash or infinite loop.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2018-16845"] },
+
+    { "product": "nginx", "vendor": "F5",
+      "ranges": [{"introduced": "0", "fixed": "1.13.3"}],
+      "cve": "CVE-2017-7529", "severity": "MEDIUM", "cvss": 7.5,
+      "summary": "Range filter integer overflow: crafted Range header causes OOB heap read — leaks cached file content or adjacent worker memory.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2017-7529"] },
+
+    { "product": "nginx", "vendor": "F5",
+      "ranges": [{"introduced": "0", "fixed": "1.5.0"}],
+      "cve": "CVE-2013-2028", "severity": "HIGH", "cvss": 7.5,
+      "summary": "Stack buffer overflow via crafted HTTP chunked Transfer-Encoding header (negative chunk size) — remote code execution in nginx < 1.5.0.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2013-2028"] },
+
+    { "product": "redis", "vendor": "Redis",
+      "ranges": [{"introduced": "0", "fixed": "6.2.7"}],
+      "cve": "CVE-2022-24735", "severity": "HIGH", "cvss": 7.0,
+      "summary": "Lua script sandbox escape allowing code execution in the Redis process via EVAL commands with untrusted Lua code.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2022-24735"] },
+
+    { "product": "openssl", "vendor": "OpenSSL",
+      "ranges": [{"introduced": "1.0.1", "fixed": "1.0.2"}],
+      "cve": "CVE-2014-0160", "severity": "HIGH", "cvss": 7.5,
+      "aliases": ["Heartbleed"],
+      "summary": "Heartbleed: TLS heartbeat extension reads up to 64KB beyond the payload — leaks private keys, session tokens, and memory to unauthenticated remote attackers.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2014-0160", "https://heartbleed.com"] },
+
+    { "product": "openssl", "vendor": "OpenSSL",
+      "ranges": [{"introduced": "1.0.1", "fixed": "1.0.2"}],
+      "cve": "CVE-2015-0204", "severity": "MEDIUM", "cvss": 4.3,
+      "aliases": ["FREAK"],
+      "summary": "FREAK: clients accept RSA export cipher suites in SERVER_KEY_EXCHANGE — enables MITM to downgrade and decrypt TLS sessions using factored export keys.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2015-0204"] },
+
+    { "product": "openssl", "vendor": "OpenSSL",
+      "ranges": [{"introduced": "1.0.1", "fixed": "1.0.2"}],
+      "cve": "CVE-2016-0800", "severity": "HIGH", "cvss": 5.9,
+      "aliases": ["DROWN"],
+      "summary": "DROWN: SSLv2 export cipher oracle — ~1000 SSLv2 connections decrypt a modern TLS session via cross-protocol attack; disable SSLv2 immediately.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2016-0800", "https://drownattack.com"] },
+
+    { "product": "openssl", "vendor": "OpenSSL",
+      "ranges": [
+        {"introduced": "1.0.0", "fixed": "1.1.0"},
+        {"introduced": "1.1.0", "fixed": "1.1.2"},
+        {"introduced": "3.0.0", "fixed": "3.0.2"}
+      ],
+      "cve": "CVE-2022-0778", "severity": "HIGH", "cvss": 7.5,
+      "summary": "Infinite loop in BN_mod_sqrt() via crafted certificate with invalid elliptic curve — DoS for any application parsing external certificates (TLS client/server, OCSP, etc.).",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2022-0778"] },
+
+    { "product": "openssl", "vendor": "OpenSSL",
+      "ranges": [{"introduced": "3.0.0", "fixed": "3.0.7"}],
+      "cve": "CVE-2022-3602", "severity": "HIGH", "cvss": 7.5,
+      "summary": "X.509 email-address punycode buffer overflow (stack) during TLS certificate verification — initially rated CRITICAL, later downgraded; patch to 3.0.7.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2022-3602"] }
+  ]
 }
