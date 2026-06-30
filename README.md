@@ -29,16 +29,30 @@ cd security_test
 python3 main.py --no-color                          # direct Python invocation
 ```
 
+After a scan, replay and triage CVE findings interactively:
+
+```bash
+# Load a saved JSON report and walk through every CVE finding:
+python3 triage.py scan_results.json
+
+# Filter to HIGH+ severity and auto-prompt to re-verify each finding live:
+python3 triage.py scan_results.json --severity HIGH --re-verify
+
+# Include all exploited findings (not just CVE-tagged):
+python3 triage.py scan_results.json --all
+```
+
 See [docs/quickstart.md](docs/quickstart.md) for full examples.
 
 ---
 
 ## Key features
 
-- **101 registered attack modules** covering repos, URLs, credentials, host:port, network
+- **102 registered attack modules** covering repos, URLs, credentials, host:port, network
   ranges, local introspection, on-site/physical (WiFi, Bluetooth, router, Android/iOS),
-  cloud, network appliances, and 68-CVE offline feed (OpenSSH, bash, Linux kernel, Windows,
-  macOS, Apache, nginx, OpenSSL)
+  cloud, network appliances, and 101-CVE offline feed (OpenSSH, bash, Linux kernel, Windows,
+  macOS, Apache, nginx, OpenSSL, Log4j/Log4Shell, Spring4Shell, Confluence, Jenkins,
+  GitLab, Docker, Kubernetes, Elasticsearch, IIS, Jira, Grafana, Keycloak)
 - **5 intensity tiers** (detective → active → intrusive → proof → fuzz) with mandatory
   confirmation (``--yes`` or interactive) at intrusive+
 - **Credential guard** — scrubs all ambient credentials before module execution
@@ -64,13 +78,13 @@ See [docs/quickstart.md](docs/quickstart.md) for full examples.
 |---|---|
 | [Quick Start](docs/quickstart.md) | Installation, common examples, parallelism, optional extras |
 | [Targets](docs/targets.md) | Target kinds, resolution precedence, port specs, batch targets |
-| [Modules](docs/modules.md) | All 101 modules by category (repo, active, intrusive, on-site, cloud, fuzz, proof) |
+| [Modules](docs/modules.md) | All 102 modules by category (repo, active, intrusive, on-site, cloud, fuzz, proof) |
 | [Intensity & Scope](docs/intensity-and-scope.md) | Tier definitions, scope enforcement, profiles |
 | [CLI Reference](docs/cli-reference.md) | Complete flag reference and exit codes |
 | [Credential Guard](docs/credential-guard.md) | How credentials are neutralised |
 | [Proof-of-Access](docs/proof-of-access.md) | Proof types, 360° sweep, relays, ledger |
 | [Cloud Assessment](docs/cloud-assessment.md) | Credentialed cloud path, IAM analysis, grant-nothing proofs |
-| [CVE Pipeline](docs/cve-pipeline.md) | CVE resolution, exploit planning, PoC generation |
+| [CVE Pipeline](docs/cve-pipeline.md) | CVE resolution, exploit planning, PoC generation, interactive triage |
 | [Propagation](docs/propagation.md) | Self-deployment onto proven footholds |
 | [Local Introspection](docs/local-introspection.md) | Container-escape detection, rootkit IOCs, on-site/physical assessment (WiFi, Bluetooth, router, Android/iOS, privesc) |
 | [Output & CI](docs/output-and-ci.md) | Report formats, attack chains, baseline drift, CI gating |

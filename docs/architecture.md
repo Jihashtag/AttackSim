@@ -6,13 +6,14 @@
 security_test/
 ├── run_all.sh                # bash orchestrator
 ├── main.py                   # python entrypoint (target resolution + dispatch)
+├── triage.py                 # interactive post-scan CVE findings triage + re-verify
 ├── config.py                 # central timeouts / limits / identity
 ├── pyproject.toml            # pytest / ruff / mypy config + optional extras
 ├── conftest.py               # test path setup + local-server fixture
 ├── requirements.txt          # OPTIONAL extras only
 ├── targets/
 │   └── model.py              # Target + resolve() (repo/url/creds/hostport/netrange/local/cloud)
-├── exploits/                 # one file per attack technique (101 modules)
+├── exploits/                 # one file per attack technique (102 modules)
 │   ├── base.py               # Finding / ExploitResult models
 │   ├── registry.py           # module catalogue + kind/intensity dispatch
 │   ├── util.py               # stdlib file walking + masking
@@ -25,7 +26,8 @@ security_test/
 │   ├── cve_resolver.py       # library: CVE lookup via NVD (--cve-lookup)
 │   ├── exploit_planner.py    # library: CVE test-plan prioritization
 │   ├── exploit_generator.py  # library: PoC script generation + sandbox execution
-│   ├── ...                   # 101 module files (one per attack technique)
+│   ├── cve_autopwn.py        # CVE-driven automated exploit verification (registered module)
+│   ├── ...                   # 102 module files (one per attack technique)
 ├── sandbox/
 │   ├── credential_guard.py   # scrubs ambient credentials before module run
 │   ├── scope_guard.py        # scope allow-list enforcement
@@ -41,7 +43,7 @@ security_test/
 │   ├── propagate_transport.py  # transport layer for remote propagation
 │   └── resources.py          # adaptive parallelism (CPU/memory detection)
 ├── data/
-│   ├── cve/feed.json         # bundled offline CVE feed: 68 records, 18 product families
+│   ├── cve/feed.json         # bundled offline CVE feed: 101 records, 32 product families
 │   ├── cve/epss.json         # offline EPSS exploit-probability scores
 │   ├── cve/attack_map.json   # category→ATT&CK technique mapping
 │   ├── cve/cpe_aliases.json  # 86-product CPE alias table (product→vendor)
@@ -78,6 +80,8 @@ Every module in `exploits/` is a Python module that exposes:
 | `SUPPORTS` | `set[str]` | Target kinds: `repo`, `url`, `creds`, `hostport`, `netrange`, `local`, `cloud` |
 | `INTENSITY` | `str` | Minimum tier: `detective`, `active`, `intrusive`, `proof`, `fuzz` |
 | `run(target)` | `→ ExploitResult` | The attack logic |
+
+**102 modules** are registered in `exploits/registry.py::ALL_MODULES`.
 
 ## Data models
 

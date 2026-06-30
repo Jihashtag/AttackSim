@@ -1,4 +1,4 @@
-# Modules (101 registered)
+# Modules (102 registered)
 
 Run `python3 main.py --list-modules` to print the live catalogue.
 
@@ -188,3 +188,4 @@ gate active scans behind `is_local or is_propagated`.
 | `device-posture` | local | detective | Post-propagation device assessment: privilege level, sandbox detection, local services on `127.0.0.1` (`ss`/`netstat`/`/proc/net/tcp`), WiFi/BT adapter presence, ARP peer discovery → `pivot_targets`, OS fingerprint; at intrusive+ if running as root reads `/etc/shadow` header (5 lines), or if `CAP_SYS_PTRACE` is present reads `/proc/1/environ` to confirm privileged access | *(posture report; HIGH/CRITICAL if privileged services exposed; CRITICAL at intrusive+ if shadow readable or PTRACE abusable)* |
 | `privesc-exploit` | local | intrusive | Attempt local privilege escalation: SUID GTFOBins, sudo NOPASSWD, password spray (≤5 attempts), CVE detection (DirtyPipe/DirtyCow/PwnKit/Baron Samedit/OverlayFS), misconfiguration checks. Verification-only (`id`); writes a single labelled proof marker. | root is obtained by any method |
 | `router-auth` | host:port / netrange | intrusive | Firmware-specific default credential testing on router/firewall admin panels (OpenWRT, DD-WRT, MikroTik, pfSense, ASUS, TP-Link, D-Link, Netgear, Zyxel, …). ≤6 attempts per host, 1 s delay | a default credential authenticates |
+| `cve-autopwn` | host:port | intrusive | CVE-driven automated exploit verification: banner-grab to fingerprint service+version, resolve matching CVEs from offline feed (101 records, 32 product families) + NVD cache, prioritise with EPSS×CVSS score, execute verification plans (nuclei_template, banner_match auto; script_poc/llm_generated require confirmation). Safe-mode only — no destructive actions. | a CVE plan is confirmed: version-in-range (banner_match), template match (nuclei_template), or script PoC returns `RESULT:True` |
