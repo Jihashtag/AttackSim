@@ -1,4 +1,4 @@
-# Modules (102 registered)
+# Modules (107 registered)
 
 Run `python3 main.py --list-modules` to print the live catalogue.
 
@@ -118,6 +118,24 @@ run, always require a scope allow-list, and each is lockout-/rate-aware.
 | `cmd-inject-confirm` | url | intrusive | Confirm OS command injection via a benign arithmetic canary (`expr`) — never executes destructive commands | the computed arithmetic result is returned in the response |
 | `ssh-auth` | host:port | intrusive | Lockout-aware SSH credential spraying and discovered-key verification | a credential or key authenticates |
 | `smtp-auth-spray` | host:port | intrusive | Lockout-aware SMTP AUTH credential spraying (PLAIN/LOGIN) | a credential authenticates via SMTP AUTH |
+
+## High-impact CVE RCE/DoS detection modules
+
+Targeted probes for critical named vulnerabilities. Four are `intrusive` (require
+`--intensity intrusive` + `--scope`); `slowloris-probe` is `active`.
+
+When a finding from any of these modules is confirmed via `[ri]` in `triage.py`, the
+exploitation menu automatically routes to the appropriate live-exploitation path —
+reverse shell listener, module re-run with OOB canary, or bounded DoS demonstration.
+Every live action requires typing `yes` in full before it fires.
+
+| Module | Target kind | Tier | CVE / CWE | Attack simulated | Outcome = EXPLOITED when… |
+|---|---|---|---|---|---|
+| `log4shell-probe` | url / host:port | intrusive | CVE-2021-44228, CVE-2021-45046 | JNDI injection via 10 HTTP headers (User-Agent, X-Forwarded-For, X-Api-Version, …); WAF-bypass obfuscation variants; timing differential + optional OOB canary | JNDI callback received on OOB canary; or >2500 ms timing differential with JNDI error string match |
+| `struts-rce-probe` | url | intrusive | CVE-2017-5638 (S2-045), CVE-2020-17530 (S2-061), CVE-2018-11776 (S2-057) | OGNL expression injection via Content-Type header; arithmetic canary (A×B) confirms evaluation; 20 common Struts action paths probed | computed arithmetic product reflected in HTTP response |
+| `ms17010-probe` | host:port | intrusive | CVE-2017-0144 (EternalBlue / MS17-010) | Raw SMBv1 negotiate + Transaction2 STATUS differential to detect unpatched MS17-010; OS version fingerprint from negotiate response | Transaction2 response indicates unpatched Windows kernel |
+| `activemq-rce-probe` | host:port | intrusive | CVE-2023-46604 | OpenWire WIREFORMAT_INFO banner parsed for version; optional ClassInfo frame sent to OOB canary to confirm broker-initiated URL fetch | vulnerable version in range (5.x before 5.15.16/5.16.7/5.17.6/5.18.3); or OOB canary receives ClassInfo fetch |
+| `slowloris-probe` | url / host:port | active | CWE-400 / CWE-770 | Bounded incomplete HTTP connection hold test: 5 connections, 3 s hold, keep-alive partial headers sent every 1.5 s; counts connections surviving the hold period | ≥3 of 5 partial connections survive the hold period (server lacks per-client connection timeout) |
 
 ## Fuzz module (requires `--intensity fuzz`)
 

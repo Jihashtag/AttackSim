@@ -13,7 +13,7 @@ security_test/
 ├── requirements.txt          # OPTIONAL extras only
 ├── targets/
 │   └── model.py              # Target + resolve() (repo/url/creds/hostport/netrange/local/cloud)
-├── exploits/                 # one file per attack technique (102 modules)
+├── exploits/                 # one file per attack technique (107 modules)
 │   ├── base.py               # Finding / ExploitResult models
 │   ├── registry.py           # module catalogue + kind/intensity dispatch
 │   ├── util.py               # stdlib file walking + masking
@@ -27,7 +27,7 @@ security_test/
 │   ├── exploit_planner.py    # library: CVE test-plan prioritization
 │   ├── exploit_generator.py  # library: PoC script generation + sandbox execution
 │   ├── cve_autopwn.py        # CVE-driven automated exploit verification (registered module)
-│   ├── ...                   # 102 module files (one per attack technique)
+│   ├── ...                   # 107 module files (one per attack technique)
 ├── sandbox/
 │   ├── credential_guard.py   # scrubs ambient credentials before module run
 │   ├── scope_guard.py        # scope allow-list enforcement
@@ -81,7 +81,7 @@ Every module in `exploits/` is a Python module that exposes:
 | `INTENSITY` | `str` | Minimum tier: `detective`, `active`, `intrusive`, `proof`, `fuzz` |
 | `run(target)` | `→ ExploitResult` | The attack logic |
 
-**102 modules** are registered in `exploits/registry.py::ALL_MODULES`.
+**107 modules** are registered in `exploits/registry.py::ALL_MODULES`.
 
 ## Data models
 

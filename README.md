@@ -48,11 +48,13 @@ See [docs/quickstart.md](docs/quickstart.md) for full examples.
 
 ## Key features
 
-- **102 registered attack modules** covering repos, URLs, credentials, host:port, network
+- **107 registered attack modules** covering repos, URLs, credentials, host:port, network
   ranges, local introspection, on-site/physical (WiFi, Bluetooth, router, Android/iOS),
   cloud, network appliances, and 101-CVE offline feed (OpenSSH, bash, Linux kernel, Windows,
   macOS, Apache, nginx, OpenSSL, Log4j/Log4Shell, Spring4Shell, Confluence, Jenkins,
-  GitLab, Docker, Kubernetes, Elasticsearch, IIS, Jira, Grafana, Keycloak)
+  GitLab, Docker, Kubernetes, Elasticsearch, IIS, Jira, Grafana, Keycloak) — plus
+  high-impact CVE detection modules for Log4Shell, Apache Struts OGNL RCE, EternalBlue
+  (MS17-010), ActiveMQ OpenWire RCE, and Slowloris DoS
 - **5 intensity tiers** (detective → active → intrusive → proof → fuzz) with mandatory
   confirmation (``--yes`` or interactive) at intrusive+
 - **Credential guard** — scrubs all ambient credentials before module execution
@@ -78,7 +80,7 @@ See [docs/quickstart.md](docs/quickstart.md) for full examples.
 |---|---|
 | [Quick Start](docs/quickstart.md) | Installation, common examples, parallelism, optional extras |
 | [Targets](docs/targets.md) | Target kinds, resolution precedence, port specs, batch targets |
-| [Modules](docs/modules.md) | All 102 modules by category (repo, active, intrusive, on-site, cloud, fuzz, proof) |
+| [Modules](docs/modules.md) | All 107 modules by category (repo, active, intrusive, high-impact CVE, on-site, cloud, fuzz, proof) |
 | [Intensity & Scope](docs/intensity-and-scope.md) | Tier definitions, scope enforcement, profiles |
 | [CLI Reference](docs/cli-reference.md) | Complete flag reference and exit codes |
 | [Credential Guard](docs/credential-guard.md) | How credentials are neutralised |

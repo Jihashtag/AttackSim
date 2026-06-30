@@ -17,12 +17,29 @@ Per-finding actions:
     [ra] auto       re-run the detection script automatically; shows full evidence output
     [ri] interactive show the PoC script, optionally edit it in $EDITOR, run with live
                     output streamed to the terminal, then record a manual verdict
-                    (confirmed / partial / not-confirmed) + free-text notes. Use this
-                    to assess real criticality for RCE, SSRF, SQLi, and other findings
-                    where you need to see actual data or craft a payload.
-                    After confirmed/partial: opens the post-exploitation toolkit to
-                    simulate the full attack chain — run follow-up modules, write
-                    pivot PoCs, or open a raw TCP session for manual exploration.
+                    (confirmed / partial / not-confirmed) + free-text notes.
+
+                    After confirmed/partial: opens an exploitation menu tailored to
+                    the finding's CWE family and tags:
+
+                    DoS findings (CWE-400/770/834, tags: slowloris/dos/…):
+                      [d] demonstrate — bounded live DoS probe + service-alive check
+                      [m] module re-run — re-runs the specific exploit module
+                      [t] raw TCP session
+
+                    RCE findings (CWE-78/94/502/…, tags: rce/log4shell/struts/…):
+                      [rs] reverse shell — prompts LHOST/LPORT, shows payloads, opens
+                           raw PTY listener (Ctrl-] to detach)
+                      [pe] post-exploitation toolkit — CWE-guided follow-up modules,
+                           custom PoC editor, reverse shell, raw TCP
+                      [m]  module re-run — re-runs the tagged exploit module
+                           (log4shell-probe, struts-rce-probe, ms17010-probe,
+                            activemq-rce-probe, slowloris-probe, …)
+                      [t]  raw TCP session; type 'raw' for full-duplex PTY mode
+
+                    Every live-exploitation action requires typing the word 'yes' in
+                    full before it fires. Any other input cancels silently.
+
     [a]ccept        mark as real, requires remediation
     [f]alse-pos     mark as false positive
     [w]aive         accept risk with justification
