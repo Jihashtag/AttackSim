@@ -24,7 +24,7 @@ exits `0`.
 ## Quick start
 
 ```bash
-git clone https://github.com/jean-alexandre-bert/attacksim && cd attacksim
+git clone https://github.com/Jihashtag/AttackSim.git && cd attacksim
 ./run_all.sh                 # attack the parent workspace
 ./run_all.sh --url https://api.example.com          # probe a live endpoint
 ./run_all.sh 10.0.0.5:22,80,6379                    # host:port service probe
