@@ -1,8 +1,11 @@
-# Safety & Design Principles
+# AttackSim — Safety & Design Principles
+
+AttackSim is designed for authorised penetration testing and red-team attacker simulation.
+Every safety property is enforced at runtime by independent layers — not by convention alone.
 
 ## Credential-free by design
 
-The toolkit runs on an unauthenticated shell: it never uses AWS / EKS / ArgoCD /
+AttackSim runs on an unauthenticated shell: it never uses AWS / EKS / ArgoCD /
 JFrog / GitHub / Docker credentials. The runtime credential guard enforces this
 property. See [credential-guard.md](credential-guard.md).
 
@@ -55,8 +58,7 @@ touch main/master. All other modules never commit, push, or send externally.
 ## Pre-scan safety check
 
 Before scanning any live target, the toolkit requires operator acknowledgement that the
-target is not production and is within authorized scope. Non-interactive shells are
-refused unless `--yes` is passed.
+target is not production and is within authorized scope. Non-interactive shells are refused unless `--yes` is passed.
 
 ## Request budget
 
@@ -65,10 +67,8 @@ volume so parallelism never exceeds a configurable ceiling.
 
 ## Subprocess safety
 
-All external process execution goes through `exploits/toolrunner.py` which enforces
-`shell=False` and audits every invocation.
+All external process execution goes through `exploits/toolrunner.py` which enforces `shell=False` and audits every invocation.
 
 ## Relay command-injection prevention
 
-Any host/port placed into relay scripts (Docker `nc`, etc.) is strictly validated
-(`sandbox/relay._safe_targets`) and non-literal values are dropped.
+Any host/port placed into relay scripts (Docker `nc`, etc.) is strictly validated (`sandbox/relay._safe_targets`) and non-literal values are dropped.

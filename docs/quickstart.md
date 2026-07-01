@@ -1,4 +1,8 @@
-# Quick Start
+# AttackSim — Quick Start
+
+AttackSim is a Python-based attacker simulation framework that requires no external
+dependencies for its core functionality. All exploit modules, CVE verification scripts,
+and the interactive triage tool run on the Python standard library alone.
 
 ## Prerequisites
 
@@ -8,7 +12,7 @@
 ## Run
 
 ```bash
-cd security_test
+cd attacksim
 ./run_all.sh                 # attack the parent workspace, pretty console output
 ```
 
@@ -20,7 +24,7 @@ python3 main.py --no-color
 
 ## Pre-scan safety check
 
-Before the first scan of any *live* target (URL, host:port, network range, or cloud),
+Before AttackSim scans any *live* target (URL, host:port, network range, or cloud),
 the toolkit shows you the resolved target, intensity and scope and asks you to confirm
 it is **not a production environment** and is **within your authorised scope**. An
 interactive terminal prompts `[y/N]`; a non-interactive shell (e.g. CI) is **refused**
@@ -96,7 +100,7 @@ auto-detected at runtime:
 | Optional | Enables | If missing |
 |---|---|---|
 | `bcrypt` (or `passlib`) | offline password-hash cracking | hash *exposure* still reported; crack step skipped |
-| local **Ollama** model | natural-language attacker briefing | deterministic report still produced |
+| local **Ollama** model | AI-powered attacker briefing and CVE PoC generation (`--llm`) | deterministic report still produced |
 
 If the interpreter has no `pip`:
 

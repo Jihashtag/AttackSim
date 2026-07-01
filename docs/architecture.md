@@ -1,9 +1,13 @@
-# Architecture
+# AttackSim — Architecture
+
+AttackSim is structured as a single-process Python orchestrator that dispatches
+independent exploit modules against a resolved target, then runs post-passes for
+CVE enrichment, attack-chain correlation, and reporting.
 
 ## Project layout
 
 ```
-security_test/
+attacksim/
 ├── run_all.sh                # bash orchestrator
 ├── main.py                   # python entrypoint (target resolution + dispatch)
 ├── triage.py                 # interactive post-scan CVE findings triage + re-verify
@@ -81,7 +85,7 @@ Every module in `exploits/` is a Python module that exposes:
 | `INTENSITY` | `str` | Minimum tier: `detective`, `active`, `intrusive`, `proof`, `fuzz` |
 | `run(target)` | `→ ExploitResult` | The attack logic |
 
-**107 modules** are registered in `exploits/registry.py::ALL_MODULES`.
+**107 modules** are registered in `exploits/registry.py::ALL_MODULES`. Every AttackSim module follows this contract exactly.
 
 ## Data models
 

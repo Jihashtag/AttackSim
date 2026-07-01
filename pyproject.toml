@@ -1,7 +1,7 @@
 [project]
-name = "security_test"
+name = "attacksim"
 version = "1.0.0"
-description = "Unauthenticated attacker simulation toolkit (credential-free)."
+description = "AttackSim — automated attacker simulation, CVE verification, AI-powered exploit generation, and interactive triage. Open-source Python penetration testing framework."
 requires-python = ">=3.9"
 
 [project.optional-dependencies]

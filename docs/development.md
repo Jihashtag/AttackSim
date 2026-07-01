@@ -1,9 +1,12 @@
-# Development
+# AttackSim — Development Guide
+
+This guide covers setting up a local AttackSim development environment, running the test
+suite, adding new exploit modules, and the project's coding conventions.
 
 ## Setup
 
 ```bash
-cd security_test
+cd attacksim
 pip install -e ".[dev]"     # pytest + ruff + mypy (optional)
 ```
 
