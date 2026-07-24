@@ -69,6 +69,31 @@ HTTP_TIMEOUT = 8           # per-request socket timeout (seconds)
 HTTP_MAX_REDIRECTS = 5     # cap redirect chains (avoid loops / SSRF pivots)
 HTTP_TOTAL_BUDGET = 30     # hard wall-clock budget for one module (seconds)
 
+# -- Phase 1-2: Advanced recon (discovery + metadata extraction) ----------
+
+# Phase 1: Web surface + cloud storage discovery
+SITEMAP_FETCH_TIMEOUT = 10              # timeout per sitemap fetch (seconds)
+SITEMAP_MAX_URLS = 5000                 # max URLs to process per sitemap
+SITEMAP_MAX_REDIRECTS = 3               # max HTTP redirects to follow
+STORAGE_PROBE_TIMEOUT = 5               # timeout per storage probe (seconds)
+STORAGE_BRUTE_MAX = 1000                # max bucket names to attempt (brute-force limit)
+CREDENTIAL_PROPAGATION_ENABLED = True   # enable credential routing to aggressive modules
+CREDENTIAL_ROUTE_INTENSITY = "intrusive"  # min intensity to route credentials
+
+# Phase 2: API and cloud metadata extraction
+API_METADATA_MAX_PARAMETERS = 200       # max parameters to extract per endpoint
+API_METADATA_MAX_ENDPOINTS = 60         # max endpoints to analyze
+CLOUD_METADATA_EXTRACTION_ENABLED = True  # enable infrastructure metadata parsing
+CLOUD_METADATA_MAX_ROLES = 100          # max IAM roles to track
+CLOUD_METADATA_MAX_INSTANCES = 500      # max instances to track
+
+# Phase 3: Credential routing and lateral movement planning
+CREDENTIAL_ROUTING_INTEGRATION_ENABLED = True  # enable credential → module routing
+CREDENTIAL_ESCALATION_MAX_DEPTH = 5     # max escalation hops (default propagation depth)
+CREDENTIAL_QUEUE_RERUNS = True          # auto-queue module re-runs on credential discovery
+LATERAL_MOVEMENT_PLANNING_ENABLED = True # plan attack paths using metadata + creds
+CREDENTIAL_CACHE_DURATION = 0           # (seconds) 0 = clear immediately after use
+
 # -- TCP / port scanning (port_probe / tls_grader) --------------------------
 TCP_CONNECT_TIMEOUT_SWEEP = 2.0    # used when scanning many ports
 TCP_CONNECT_TIMEOUT_SINGLE = 6.0   # used for a handful of ports
