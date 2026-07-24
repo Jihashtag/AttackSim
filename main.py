@@ -151,6 +151,12 @@ def parse_args(argv=None) -> argparse.Namespace:
                    help="Remaining propagation depth (decremented each hop). When 0, the "
                         "propagated instance does not propagate further. Default from config "
                         "(PROPAGATE_MAX_DEPTH=2).")
+    p.add_argument("--pivot-depth", dest="pivot_depth_limit", type=int, default=None,
+                   help="Max lateral-movement hops the pivot fan-out will follow before "
+                        "stopping (item 9: deep multi-segmented networks were truncated at "
+                        "the previous fixed 2-hop default). Default from config "
+                        "(PIVOT_MAX_DEPTH=2). Raise for deep/segmented networks, e.g. "
+                        "--pivot-depth 5.")
     p.add_argument("--propagate-strategy", dest="propagate_strategy", default=None,
                    choices=["auto", "native", "zipapp", "source"],
                    help="Force a specific propagation payload strategy. Default: auto "
@@ -569,6 +575,9 @@ def _configure_target(target, args, prove, intensity, guard, session_headers,
     target.propagate_script = getattr(args, "propagate_script", False)
     target.propagate_depth = (args.propagate_depth if getattr(args, "propagate_depth", None) is not None
                               else getattr(config, "PROPAGATE_MAX_DEPTH", 2))
+    target.pivot_max_depth = (args.pivot_depth_limit
+                              if getattr(args, "pivot_depth_limit", None) is not None
+                              else getattr(config, "PIVOT_MAX_DEPTH", 2))
     # True only when this scanner instance was deployed by a parent propagator via
     # --propagated-instance (injected by _build_propagation_args; never set by end users).
     target.is_propagated = bool(getattr(args, "propagated_instance", False))
@@ -992,6 +1001,7 @@ def _inherit_governance(sub, parent) -> None:
     # tunnel so every hop is identified in the same place and reached from the foothold.
     sub.pivot_proxy = getattr(parent, "pivot_proxy", None)
     sub.proof_ledger = getattr(parent, "proof_ledger", None)
+    sub.pivot_max_depth = getattr(parent, "pivot_max_depth", None)
 
 
 # Service ports probed when a URL target's host is scanned alongside HTTP/HTTPS.
@@ -1154,18 +1164,22 @@ def _fanout_pivots(target, args, jobs: int = 1, resume=None) -> list:
     if not pending:
         return []
     _cfg = config
-    max_depth = getattr(_cfg, "PIVOT_MAX_DEPTH", 2)
+    max_depth = getattr(target, "pivot_max_depth", None)
+    if max_depth is None:
+        max_depth = getattr(_cfg, "PIVOT_MAX_DEPTH", 2)
     budget = getattr(_cfg, "PIVOT_WALL_BUDGET", 600)
     run_intensity = getattr(target, "intensity", None)
     guard = getattr(target, "scope_guard", None)
     led = ledger_mod.get_or_create(target)
     hostport_mods = registry.modules_for(targetmod.HOSTPORT, run_intensity)
     url_mods = registry.modules_for(targetmod.URL, run_intensity)
+    cloud_mods = registry.modules_for(targetmod.CLOUD, run_intensity)
     if args.only:
         wanted = {s.strip() for s in args.only.split(",") if s.strip()}
         hostport_mods = registry.by_names(wanted, hostport_mods)
         url_mods = registry.by_names(wanted, url_mods)
-    if not hostport_mods and not url_mods:
+        cloud_mods = registry.by_names(wanted, cloud_mods)
+    if not hostport_mods and not url_mods and not cloud_mods:
         return []
 
     results = []
@@ -1193,6 +1207,29 @@ def _fanout_pivots(target, args, jobs: int = 1, resume=None) -> list:
             seen_cidrs.add(cidr)
             for child in _expand_subnet_spec(spec, guard, deadline, target):
                 queue.append((child, depth))
+            continue
+        # Credential-to-pivot chaining: a module recovered a live extended-cloud-provider
+        # credential (post_exploit.publish_credential) — re-run the cloud enumerators
+        # against a synthetic cloud target carrying the newly discovered credential(s).
+        if spec.get("kind") == "cloud":
+            if not cloud_mods:
+                continue
+            reached_from = spec.get("reached_from") or spec.get("via", "?")
+            print(f"[*] pivot: re-enumerating cloud resources via {reached_from} "
+                  f"(depth {depth}/{max_depth})", file=sys.stderr)
+            sub = targetmod.Target(kind=targetmod.CLOUD, raw="cloud (credential pivot)")
+            _inherit_governance(sub, target)
+            sub.pivot_depth = depth
+            sub.extended_cloud_creds = list(getattr(target, "extended_cloud_creds", []) or [])
+            if led is not None:
+                led.record("cloud", "cloud-credential-pivot", reached_from=reached_from,
+                           via="credential", proof="recovered live credential",
+                           proof_kind=ledger_mod.REACHABILITY, scope_status="in-scope",
+                           severity="MEDIUM",
+                           note=f"cloud re-enum triggered by {reached_from}")
+            results.extend(_run_modules(cloud_mods, sub, jobs=jobs, resume=resume))
+            for nxt in (getattr(sub, "pivot_targets", []) or []):
+                queue.append((nxt, depth + 1))
             continue
         # Named cross-cloud / service next hop (e.g. a Cloud Run URL reachable from the
         # foothold). Run the url modules against it, tunnelled through the relay proxy.
@@ -1369,6 +1406,12 @@ def _build_propagation_args(target, host: str) -> list:
     cve_key = getattr(target, "_cve_api_key", None)
     if cve_key:
         args += ["--cve-api-key", str(cve_key)]
+
+    # Pivot fan-out depth (item 9): forward a non-default limit to the propagated hop
+    # so a deep/segmented network doesn't silently reset to the config default.
+    pivot_max_depth = getattr(target, "pivot_max_depth", None)
+    if pivot_max_depth is not None and pivot_max_depth != getattr(config, "PIVOT_MAX_DEPTH", 2):
+        args += ["--pivot-depth", str(pivot_max_depth)]
 
     # Host subnet: derive /24 from the foothold's IP for local network scanning
     subnet = _derive_subnet(host)

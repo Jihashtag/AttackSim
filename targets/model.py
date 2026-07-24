@@ -136,6 +136,15 @@ class Target:
     discovered_urls: List[str] = field(default_factory=list)   # spider output (same-origin)
     pivot_targets: List[dict] = field(default_factory=list)    # [{kind,host,port,ports,via,note}]
     pivot_depth: int = 0                # how many pivot hops produced this target (0 = original)
+    # Cloud credentials RECOVERED during the run (exfiltrated cloud API keys/tokens),
+    # published by post_exploit.publish_credential and consumed by the credentialed cloud
+    # enumerators for account pivoting. Distinct from cloud_inventory (ambient creds the
+    # scanner host already held). Held in memory only, never written to reports.
+    extended_cloud_creds: List[object] = field(default_factory=list)  # ExtendedCloudCredential
+    # API operations DISCOVERED via schema introspection (GraphQL mutations, gRPC methods,
+    # OpenAPI paths) that downstream executor modules invoke at intrusive+. Each entry:
+    # {kind: "graphql"|"grpc", endpoint/host/port, name, ...}.
+    discovered_apis: List[dict] = field(default_factory=list)
 
     # -- foothold-relayed scanning + proof-of-access identification ----------
     # When access is PROVEN, the next hop is reached FROM the foothold via a relay

@@ -9,7 +9,7 @@ import pytest
 
 from exploits import (cors_probe, ssrf_probe, waf_detect, nosqli_confirm,
                       dns_attack_probe, api_enum, netutil, forbidden_bypass,
-                      post_exploit)
+                      post_exploit, graphql_mutation_executor, grpc_method_invoker)
 
 
 # ---------------------------------------------------------------------------
@@ -419,6 +419,31 @@ def test_publish_pivot_intrusive_only(fake_target):
     assert 443 in t.pivot_targets[0]["ports"]
 
 
+def test_publish_pivot_high_confidence_propagates_at_active(fake_target):
+    # High-confidence discoveries (public cloud IPs, resolved DNS records) propagate
+    # at the active tier; medium/default confidence still requires intrusive+.
+    t = fake_target(kind="url", url="http://x/")
+    t.pivot_targets = []
+    t.intensity = "active"
+    # default (medium) confidence: still gated to intrusive+
+    assert post_exploit.publish_pivot(t, host="10.0.0.9", via="test") is False
+    # high confidence: allowed at active
+    assert post_exploit.publish_pivot(
+        t, host="10.0.0.9", via="test", confidence="high") is True
+    assert t.pivot_targets and t.pivot_targets[0]["host"] == "10.0.0.9"
+
+
+def test_publish_pivot_detective_never_propagates(fake_target):
+    # detective is pure reconnaissance: even high-confidence discoveries are not
+    # auto-propagated.
+    t = fake_target(kind="url", url="http://x/")
+    t.pivot_targets = []
+    t.intensity = "detective"
+    assert post_exploit.publish_pivot(
+        t, host="10.0.0.9", via="test", confidence="high") is False
+    assert t.pivot_targets == []
+
+
 def test_publish_pivot_dedup(fake_target):
     t = fake_target(kind="url", url="http://x/")
     t.pivot_targets = []
@@ -461,3 +486,118 @@ def test_cloud_enum_publishes_public_ip_pivots(fake_target, monkeypatch):
     t.pivot_targets = []
     cloud_enum._ec2_instances(t, cred={}, region="us-east-1")
     assert any(e["host"] == "203.0.113.5" for e in t.pivot_targets)
+
+
+def test_cloud_enum_public_ip_pivots_at_active_tier(fake_target, monkeypatch):
+    # Item 1: public cloud instance IPs are high-confidence discoveries and must
+    # propagate on active-tier runs, not only intrusive+.
+    from exploits import cloud_enum, cloudutil
+    xml = ("<DescribeInstancesResponse><reservationSet><item><instancesSet>"
+           "<item><instanceId>i-1</instanceId><ipAddress>203.0.113.7</ipAddress></item>"
+           "</instancesSet></item></reservationSet></DescribeInstancesResponse>")
+    monkeypatch.setattr(cloud_enum, "_query", lambda *a, **k: (200, xml))
+    monkeypatch.setattr(cloudutil, "aws_error", lambda _b: False)
+    t = fake_target(kind="cloud", url=None)
+    t.host = "aws"
+    t.intensity = "active"
+    t.pivot_targets = []
+    cloud_enum._ec2_instances(t, cred={}, region="us-east-1")
+    assert any(e["host"] == "203.0.113.7" for e in t.pivot_targets)
+
+
+# ---------------------------------------------------------------------------
+# Item 2: credential-to-pivot chaining
+# ---------------------------------------------------------------------------
+def test_publish_credential_queues_cloud_pivot(fake_target):
+    from sandbox.cloud_creds_extended import ExtendedCloudCredential
+    t = fake_target(kind="repo")
+    t.intensity = "intrusive"
+    t.extended_cloud_creds = []
+    t.pivot_targets = []
+    cred = ExtendedCloudCredential(provider="digitalocean", source="foo.py:1", secret="dop_v1_" + "a" * 64)
+    assert post_exploit.publish_credential(t, cred, via="secret-harvester") is True
+    assert t.extended_cloud_creds == [cred]
+    assert any(e["kind"] == "cloud" for e in t.pivot_targets)
+    # Idempotent: same (provider, source) doesn't duplicate
+    assert post_exploit.publish_credential(t, cred, via="secret-harvester") is False
+    assert len(t.extended_cloud_creds) == 1
+    assert len([e for e in t.pivot_targets if e["kind"] == "cloud"]) == 1
+
+
+def test_publish_credential_gated_below_intrusive(fake_target):
+    from sandbox.cloud_creds_extended import ExtendedCloudCredential
+    t = fake_target(kind="repo")
+    t.intensity = "active"
+    t.extended_cloud_creds = []
+    t.pivot_targets = []
+    cred = ExtendedCloudCredential(provider="digitalocean", source="foo.py:1", secret="x")
+    assert post_exploit.publish_credential(t, cred) is False
+    assert t.extended_cloud_creds == []
+
+
+def test_secret_scanner_digitalocean_token_triggers_credential_publish(fake_target, monkeypatch, tmp_path):
+    from exploits import secret_scanner
+    (tmp_path / "leak.env").write_text(
+        "DIGITALOCEAN_TOKEN=dop_v1_" + "a" * 64 + "\n")
+    t = fake_target(kind="repo", root=str(tmp_path))
+    t.intensity = "intrusive"
+    t.extended_cloud_creds = []
+    t.pivot_targets = []
+    monkeypatch.setattr("exploits.netutil.http_request",
+                         lambda *a, **k: (403, "InvalidClientTokenId", None))
+    secret_scanner.run(t)
+    assert any(c.provider == "digitalocean" for c in t.extended_cloud_creds)
+    assert any(e["kind"] == "cloud" for e in t.pivot_targets)
+
+
+# ---------------------------------------------------------------------------
+# Item 3: schema discoveries executed (graphql-mutation-executor, grpc-method-invoker)
+# ---------------------------------------------------------------------------
+def test_graphql_mutation_executor_invokes_discovered_mutation(fake_target, monkeypatch):
+    t = fake_target(kind="url", url="http://victim.example/graphql")
+    t.discovered_apis = [
+        {"kind": "graphql", "endpoint": "http://victim.example/graphql",
+         "name": "createWidget", "via": "graphql-probe"},
+        {"kind": "graphql", "endpoint": "http://victim.example/graphql",
+         "name": "deleteWidget", "via": "graphql-probe"},
+    ]
+
+    def fake_request(url, method, headers=None, body=None, **kw):
+        return 200, '{"data": {"createWidget": {"id": 1}}}', {}
+    monkeypatch.setattr(netutil, "http_request", fake_request)
+
+    res = graphql_mutation_executor.run(t)
+    assert res.exploited is True
+    titles = [f.title for f in res.findings]
+    assert any("createWidget" in t for t in titles)
+    assert not any("deleteWidget" in t for t in titles)  # destructive name never invoked
+
+
+def test_graphql_mutation_executor_no_discoveries(fake_target):
+    t = fake_target(kind="url", url="http://victim.example/graphql")
+    t.discovered_apis = []
+    res = graphql_mutation_executor.run(t)
+    assert res.exploited is False
+    assert res.findings == []
+
+
+def test_grpc_method_invoker_invokes_discovered_method(fake_target, monkeypatch):
+    from exploits import toolrunner
+
+    class _Res:
+        available = True
+        ok = True
+        stdout = '{"status": "SERVING"}'
+        stderr = ""
+
+    monkeypatch.setattr(toolrunner, "available", lambda _b: True)
+    monkeypatch.setattr(toolrunner, "run_tool", lambda *a, **k: _Res())
+
+    t = fake_target(kind="hostport", host="10.0.0.5", port=50051)
+    t.discovered_apis = [
+        {"kind": "grpc", "host": "10.0.0.5", "port": 50051,
+         "name": "grpc.health.v1.Health/Check", "via": "grpc-reflection"},
+    ]
+    res = grpc_method_invoker.run(t)
+    assert res.exploited is True
+    assert any("Health/Check" in f.title for f in res.findings)

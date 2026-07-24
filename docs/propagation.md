@@ -18,11 +18,31 @@ intrusive+ (nothing chains on a `detective`/`active` run):
   `exploits.post_exploit.publish_pivot()` / `publish_url()` helpers (scope-checked, deduped).
   Examples: `dns-enum` (resolved records/subdomains), `cloud-enum` (public EC2 IPs),
   `cloud-pivot` (SSM subnet peers), `reverse-dns`/`passive-discovery`/`port-probe` (peers),
-  `forbidden-bypass` (a now-reachable endpoint), and the on-site probes (gateway/subnet).
+  `forbidden-bypass` (a now-reachable endpoint), `db-topology` (MongoDB/Redis/Elasticsearch
+  cluster peers), `service-mesh-probe` (Consul catalog nodes), and the on-site probes
+  (gateway/subnet). High-confidence discoveries (public cloud IPs, resolved DNS records,
+  TCP-confirmed peers, and cluster/mesh peers disclosed by the service itself) propagate
+  starting at the `active` tier via `confidence="high"`; everything else stays intrusive+.
+- **Credential-to-pivot chaining.** A module that recovers a live extended-cloud-provider
+  credential (e.g. `secret-harvester` finding a DigitalOcean/Alibaba key) calls
+  `post_exploit.publish_credential()`, which appends it to `target.extended_cloud_creds`
+  and queues a `kind: "cloud"` pivot spec. `_fanout_pivots()` drains it by re-running the
+  cloud enumerators (`cloud-multicloud-enum`, etc.) against a synthetic cloud target
+  carrying the new credential — so an exfiltrated credential is used for account
+  enumeration in the same run it was found, not just reported.
 
 Queued pivots are drained by `_fanout_pivots()`, which runs the full host:port module set
 against each — so discovery → chain → escalate → (with `--prove-access`) propagate is a
 single continuous flow once the run is at intrusive+.
+
+## Pivot fan-out depth (`--pivot-depth`)
+
+`_fanout_pivots()`'s breadth-first walk is bounded by `PIVOT_MAX_DEPTH` (default 2 hops,
+`config.py`). Deep/segmented networks that need more hops can raise this per run with
+`--pivot-depth N` (e.g. `--pivot-depth 5`), without touching the config default. The chosen
+depth is carried onto every synthesized sub-target (`_inherit_governance`) and forwarded to
+propagated instances via `_build_propagation_args()` so a `--propagate-script` deployment
+doesn't silently reset back to the 2-hop default.
 
 ## Usage
 
