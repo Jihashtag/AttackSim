@@ -66,3 +66,16 @@ python3 main.py https://staging.example --scope staging.example --yes --fail-on 
 | `0` | All assessed risks are mitigated (or below `--fail-on` threshold) |
 | `1` | Exploitable issues found (per `--fail-on`) |
 | `2` | Usage or runtime error (including a declined pre-scan safety check) |
+
+## Default `--fail-on` threshold
+
+When `--fail-on` is **not** passed, the threshold depends on the target kind:
+
+- **Live targets** (`url`, `hostport`, `netrange`, `cloud`) default to **`MEDIUM`** — a
+  single INFO/LOW finding (e.g. a `path-probe` hit on `.gitignore`) will not fail a CI
+  pipeline. Pass an explicit `--fail-on` to raise or lower this.
+- **`repo` / `local`** targets keep the strict default: **any** exploited module fails the
+  run, since any exploited finding against source or the local host is meaningful.
+
+Pass `--fail-on CRITICAL|HIGH|MEDIUM|LOW|INFO` to set the threshold explicitly for any
+target kind.

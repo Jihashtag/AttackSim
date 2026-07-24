@@ -26,9 +26,18 @@ fails. It transparently reports what it neutralised:
 
 ## Opt out
 
-Use `--keep-credentials` to disable the guard (not recommended). The core modules
-never read credentials anyway — the guard makes that property **enforceable and
+Use `--keep-credentials` to disable the guard (not recommended for general use). The core
+modules never read credentials anyway — the guard makes that property **enforceable and
 auditable**.
+
+`--keep-credentials` is intended for **red-team use on an already-compromised foothold**,
+where operating as the foothold's identity is the point of the exercise. When passed, the
+guard's `scrub()` is skipped entirely and the scanner inherits every ambient credential
+(`~/.aws/credentials`, `KUBECONFIG`, `ARGOCD_AUTH_TOKEN`, …). The disabled state is
+announced on `stderr` (`[*] credential guard DISABLED`). By design, this state is **not**
+recorded inside the report artifact; the operator is responsible for noting that a run was
+credentialed. For the credentialed *cloud* path prefer `--use-discovered-cloud-creds`
+(below), which keeps the guard active for every non-cloud module.
 
 ## Interaction with cloud assessment
 

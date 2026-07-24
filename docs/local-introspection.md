@@ -75,6 +75,29 @@ into the orchestrator as pivot targets.
 | `privesc-exploit` | intrusive | Attempt local privilege escalation — SUID GTFOBins, sudo NOPASSWD, default-password spray (≤5 attempts, `_SPRAY_MAX`), kernel CVE detection (DirtyPipe/DirtyCow/OverlayFS/PwnKit/Baron Samedit). On success: runs `id` only (verification), writes one labelled marker file to `/tmp/SECTEST_PRIVESC_PROOF_<pid>_<ts>.txt`, adds `shell-exec` relay to `pivot_targets`. No persistent shell, no data exfil. |
 | `router-auth` | intrusive | Firmware-specific default credential testing on router/firewall admin panels (OpenWRT, DD-WRT, MikroTik, pfSense, ASUS, TP-Link, D-Link, Netgear, Zyxel, …). HTTP Basic Auth + form POST. ≤6 attempts per host, 1 s delay between attempts. |
 
+### Runtime tool dependencies
+
+The on-site modules drive **external system binaries** that are rarely present on a
+standard Linux server or CI container. When none of a module's tools is found on `PATH`,
+the module returns a clean `tool_available=False` INFO skip — it is **not** broken, it
+simply has no radio/interface tool to use. Plan to run these from a real assessment
+laptop (or a foothold with the hardware), not a headless CI runner.
+
+| Module | Tools tried (in order) | No-op when… |
+|---|---|---|
+| `wifi-probe` | `nmcli` → `iwlist` → `iw` → `wpa_cli` | none installed (typical on servers/containers) |
+| `bluetooth-probe` | `bluetoothctl` → `hcitool` → `btmgmt` (+ `gatttool` for GATT, `hciconfig`/sysfs for adapter presence) | no BlueZ tools and no `/sys/class/bluetooth` adapter |
+| `router-probe` | none required (pure TCP/HTTP probing) | — always runs |
+| `android-probe` | `adb` (plus LAN TCP/mDNS probing, which needs no binary) | `adb` absent → LAN-only discovery |
+| `ios-probe` | `ideviceinfo` / `idevice_id` / `pymobiledevice3` (plus LAN TCP/mDNS probing) | libimobiledevice tools absent → LAN-only discovery |
+| `device-posture` | `id`/`whoami`, `ss` → `netstat` → `/proc/net/tcp`, `/proc/net/arp` | degrades gracefully via `/proc` — always produces output |
+| `privesc-exploit` | `sudo`, `pkexec`, `find` (SUID), `uname` | missing tools reduce coverage; never hard-fails |
+| `router-auth` | none required (HTTP Basic + form POST) | — always runs |
+
+`wifi-probe` and `bluetooth-probe` each try progressively more minimal fallbacks
+(`wpa_cli`, `btmgmt`) so they still work on headless/embedded Linux that ships neither
+NetworkManager nor the legacy `hcitool`.
+
 ### Pivot propagation from on-site footholds
 
 When `wifi-probe` finds a vulnerable network, it appends:

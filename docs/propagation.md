@@ -4,6 +4,26 @@ When access to a foothold is **proven** (via `--prove-access`), the toolkit can 
 itself onto the foothold and run a scan from inside** — reaching network segments invisible
 to the scanner. This is the deepest form of lateral-movement assessment.
 
+## Discovery-driven chaining (intrusive+)
+
+Propagation is the deepest hop of a broader rule: **at `intrusive` intensity and above,
+any discovery becomes a follow-on attempt.** Two mechanisms implement this, both gated to
+intrusive+ (nothing chains on a `detective`/`active` run):
+
+- **Auto host pivot.** The orchestrator's post-exploit hook registers *every* module result
+  with `exploited=True` as a pivot on the target host — so a confirmed weakness is always
+  re-probed and escalated.
+- **Discovered-other-host / URL publication.** Discovery modules that surface hosts,
+  services, or URLs *other than the run's own target* publish them via the shared
+  `exploits.post_exploit.publish_pivot()` / `publish_url()` helpers (scope-checked, deduped).
+  Examples: `dns-enum` (resolved records/subdomains), `cloud-enum` (public EC2 IPs),
+  `cloud-pivot` (SSM subnet peers), `reverse-dns`/`passive-discovery`/`port-probe` (peers),
+  `forbidden-bypass` (a now-reachable endpoint), and the on-site probes (gateway/subnet).
+
+Queued pivots are drained by `_fanout_pivots()`, which runs the full host:port module set
+against each — so discovery → chain → escalate → (with `--prove-access`) propagate is a
+single continuous flow once the run is at intrusive+.
+
 ## Usage
 
 ```bash
@@ -27,7 +47,7 @@ python3 main.py 10.0.0.5:2375 --prove-access --propagate-script --host-subnet 10
 | Requires explicit confirmation | Interactive prompt or `--yes` |
 | Depth-bounded | `--propagate-depth` (default: 2) decremented each hop; at 0 no further propagation |
 | Cleanup | Deployed payloads removed after execution (`PROPAGATE_CLEANUP=True`) |
-| Scope-gated | All targets on the propagated hop are scope-checked |
+| Scope-gated | All targets on the propagated hop pass through `authorize()`. The propagated instance inherits the parent's **target-derived** scope model: with no explicit `--scope` allow-list it operates under the operator's original confirmation and may sweep the foothold's subnet (see [intensity-and-scope.md](intensity-and-scope.md)). Pass an explicit `--scope` to impose a hard per-host boundary on propagated hops. |
 
 ## Behavior
 
@@ -80,7 +100,15 @@ This demonstrates the blast radius of a compromised CI/CD runner or developer wo
 
 Propagated instances inherit not just CLI flags but also runtime configuration state:
 
-- **Environment variables** — all `SECTEST_*` env vars are forwarded
+- **Environment variables** — all `SECTEST_*` env vars are forwarded to the propagated
+  instance (via `export_for_propagation()`). This is intentional so that the child inherits
+  the operator's full runtime configuration. Note that this forwards *every* `SECTEST_*`
+  value, including any that hold secrets (e.g. `SECTEST_NVD_API_KEY`,
+  `SECTEST_SLACK_WEBHOOK`); on propagation these are serialized into the payload delivered
+  to the foothold. Operators should avoid setting secret-bearing `SECTEST_*` variables when
+  propagating onto hosts they do not fully trust. The child applies imported configuration
+  through `import_from_propagation()` without an allow-list filter — the parent is trusted
+  to define the propagated configuration.
 - **Discovery-driven updates** — if the parent discovers VPC endpoints, API gateways,
   or service-mesh sidecars, these are serialized via `export_for_propagation()` and
   injected into the child via `import_from_propagation()`

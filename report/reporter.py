@@ -190,12 +190,19 @@ def _rules_from_results(results: List[ExploitResult]) -> dict:
         for f in r.findings:
             rid = _finding_id(r.name, f)
             if rid not in rules:
+                # Only build a CWE MITRE helpUri when the finding actually carries a
+                # numeric CWE; otherwise ".../0.html" is a dead link (BUG-26). Fall back
+                # to the CWE index page.
+                cwe_num = (getattr(f, "cwe", "") or "").replace("CWE-", "").strip()
+                if cwe_num.isdigit():
+                    help_uri = f"https://cwe.mitre.org/data/definitions/{cwe_num}.html"
+                else:
+                    help_uri = "https://cwe.mitre.org/"
                 rules[rid] = {
                     "id": rid,
                     "name": rid.replace("/", "_"),
                     "shortDescription": {"text": (getattr(f, "category", "") or r.name)},
-                    "helpUri": "https://cwe.mitre.org/data/definitions/"
-                               + (getattr(f, "cwe", "").replace("CWE-", "") or "0") + ".html",
+                    "helpUri": help_uri,
                     "defaultConfiguration": {
                         "level": _SARIF_LEVEL.get(f.severity, "note")},
                 }

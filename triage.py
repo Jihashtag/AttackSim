@@ -382,7 +382,7 @@ def load_report(path: str) -> dict:
 def _cve_id_from_finding(f: dict) -> str:
     """Extract the first CVE-XXXX-XXXXX reference from a finding dict."""
     for ref in f.get("references") or []:
-        m = re.match(r"(CVE-\d{4}-\d+)", str(ref))
+        m = re.search(r"(CVE-\d{4}-\d+)", str(ref))
         if m:
             return m.group(1)
     # Also check the title
@@ -522,10 +522,31 @@ def show_expanded(f: dict) -> None:
 # ──────────────────────────────────────── re-verification ────────────────────
 
 def _parse_host_port(location: str) -> Tuple[str, int]:
+    # Full URL (http://host:port/path, https://host/...) — parse properly so we do not
+    # mistake a path segment for a port (BUG-1).
+    if "://" in location:
+        from urllib.parse import urlparse
+        try:
+            u = urlparse(location)
+            if u.hostname:
+                default = 443 if u.scheme == "https" else 80
+                return u.hostname, (u.port or default)
+        except (ValueError, TypeError):
+            pass
     # IPv6 [::1]:port
     m = re.match(r"^\[([^\]]+)\]:(\d+)$", location)
     if m:
         return m.group(1), int(m.group(2))
+    # Bare IPv6 literal (e.g. 2001:db8::1, or 2001:db8::1:6379 which is itself a valid
+    # address) — do not rsplit on ':' or the address gets truncated (BUG-13). Without
+    # brackets a trailing port is inherently ambiguous, so treat a whole valid IPv6
+    # literal as the host.
+    import ipaddress
+    try:
+        ipaddress.ip_address(location)
+        return location, 80
+    except ValueError:
+        pass
     if ":" in location:
         parts = location.rsplit(":", 1)
         try:
@@ -614,6 +635,22 @@ def _open_editor(script: str) -> str:
             pass
 
 
+def _kill_process_group(proc: "subprocess.Popen") -> None:
+    """Kill a child started with start_new_session=True, including its children.
+
+    Falls back to proc.kill() on platforms without os.killpg (Windows) or if the
+    process group is already gone.
+    """
+    try:
+        import signal
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (AttributeError, ProcessLookupError, OSError):
+        try:
+            proc.kill()
+        except OSError:
+            pass
+
+
 def _run_script_operator(script: str, timeout: int = 60) -> Tuple[bool, str, str]:
     """Run an operator-reviewed script without sandbox resource caps.
 
@@ -636,10 +673,14 @@ def _run_script_operator(script: str, timeout: int = 60) -> Tuple[bool, str, str
 
     evidence = ""
     try:
+        # start_new_session=True puts the child in its own process group so that on
+        # timeout we can kill the whole group (the PoC's own subprocess children), not
+        # just the interpreter (BUG-7).
         proc = subprocess.Popen(
             [sys.executable, "-S", tmp_path],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, env=restricted_env,
+            start_new_session=True,
         )
         lines: list = []
         assert proc.stdout is not None
@@ -654,7 +695,7 @@ def _run_script_operator(script: str, timeout: int = 60) -> Tuple[bool, str, str
         try:
             proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            proc.kill()
+            _kill_process_group(proc)
             print(f"\n  [!] Script timed out after {timeout}s")
         reader.join(timeout=5)
 
@@ -2290,8 +2331,14 @@ _Decisions: Dict[str, dict] = {}
 
 
 def _fingerprint(module_name: str, f: dict) -> str:
-    cve_id = _cve_id_from_finding(f)
-    return f"{module_name}|{cve_id or f.get('title','?')}|{f.get('location','?')}"
+    # Delegate to the reporter's fingerprint so triage decisions are correlatable with the
+    # baseline diff (BUG-22). Fall back to a local scheme if the reporter is unavailable.
+    try:
+        from report.reporter import _fingerprint_finding
+        return _fingerprint_finding(module_name, f)
+    except Exception:
+        cve_id = _cve_id_from_finding(f)
+        return f"{module_name}|{cve_id or f.get('title','?')}|{f.get('location','?')}"
 
 
 def _show_menu() -> None:

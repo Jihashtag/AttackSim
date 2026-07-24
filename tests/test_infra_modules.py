@@ -86,8 +86,10 @@ def test_unauth_elasticsearch_open(routed_http_server):
 
 
 def test_unauth_probe_skip_when_unreachable(fake_target):
+    # Use an uncommon high port (not 6379): a real local Redis listening on the standard
+    # port would otherwise make this "unreachable" test find a live service (BUG-4).
     t = fake_target(kind="hostport", host="127.0.0.1", port=1, raw="x")
-    t.ports = [6379]
+    t.ports = [65401]
     res = unauth_service_probe.run(t)
     assert res.exploited is False
     assert res.error

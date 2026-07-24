@@ -376,7 +376,9 @@ SARIF_TOOL_URI = "https://example.invalid/security_test"
 # Detective-tier recon modules (Phase 1)
 # ===========================================================================
 # -- DNS recon (exploits/dns_recon.py + dnsutil.py; detective, read-only) ----
-DNS_TIMEOUT = 4
+# Single, env-overridable definition (SECTEST_DNS_TIMEOUT). Previously this was shadowed
+# by a second `DNS_TIMEOUT = _env(...)` further down, making this line dead code (BUG-2).
+DNS_TIMEOUT = _env("DNS_TIMEOUT", 4)
 DNS_AXFR_ENABLED = True                 # attempt zone transfer (read-only request)
 DNS_PUBLIC_RESOLVER = "1.1.1.1"         # fallback resolver if /etc/resolv.conf is empty
 
@@ -506,7 +508,7 @@ SMTP_BOMB_TEST_COUNT = _env("SMTP_BOMB_TEST_COUNT", 10)
 SMTP_BOMB_TEST_INTERVAL = _env("SMTP_BOMB_TEST_INTERVAL", 0.1)
 
 # -- SMTP email posture / DNS analysis (exploits/smtp_email_posture.py; active) --------
-DNS_TIMEOUT = _env("DNS_TIMEOUT", 5)
+# (DNS_TIMEOUT is defined once above, in the DNS recon section — BUG-2.)
 DKIM_SELECTORS = (
     "default", "google", "selector1", "selector2", "k1", "k2",
     "mail", "dkim", "s1", "s2", "smtp", "mandrill", "mailjet",
@@ -949,6 +951,51 @@ SCOPE_REQUIRE_CONFIRMATION_AT = "intrusive"   # replaces SCOPE_REQUIRE_ALLOWLIST
 
 
 # ===========================================================================
+# v11 web/network coverage modules
+# ===========================================================================
+# -- cors-probe (exploits/cors_probe.py; active) ----------------------------
+CORS_TIMEOUT = _env("CORS_TIMEOUT", 8)
+CORS_ATTACKER_ORIGIN = _env("CORS_ATTACKER_ORIGIN", "https://attacker.example")
+
+# -- waf-detect (exploits/waf_detect.py; detective) -------------------------
+WAF_DETECT_ACTIVE = _env("WAF_DETECT_ACTIVE", True)   # send challenge payloads
+WAF_DETECT_TIMEOUT = _env("WAF_DETECT_TIMEOUT", 5)
+
+# -- ssrf-probe (exploits/ssrf_probe.py; intrusive) -------------------------
+SSRF_MAX_PARAMS = _env("SSRF_MAX_PARAMS", 5)
+SSRF_TIMEOUT = _env("SSRF_TIMEOUT", 8)
+SSRF_CANARY_FILE = _env("SSRF_CANARY_FILE", "/etc/passwd")
+
+# -- nosqli-confirm (exploits/nosqli_confirm.py; intrusive) -----------------
+NOSQLI_MAX_PARAMS = _env("NOSQLI_MAX_PARAMS", 5)
+NOSQLI_TIMEOUT = _env("NOSQLI_TIMEOUT", 8)
+
+# -- dns-attack-probe (exploits/dns_attack_probe.py; intrusive) -------------
+DNS_AXFR_TIMEOUT = _env("DNS_AXFR_TIMEOUT", 10)
+DNS_REBINDING_SAMPLES = _env("DNS_REBINDING_SAMPLES", 3)
+DNS_REBINDING_DELAY = _env("DNS_REBINDING_DELAY", 1.0)
+
+# -- api-enum (exploits/api_enum.py; active) --------------------------------
+API_ENUM_TIMEOUT = _env("API_ENUM_TIMEOUT", 8)
+API_ENUM_MAX_PATHS = _env("API_ENUM_MAX_PATHS", 60)
+
+# -- forbidden-bypass (exploits/forbidden_bypass.py; intrusive) -------------
+FORBIDDEN_BYPASS_TIMEOUT = _env("FORBIDDEN_BYPASS_TIMEOUT", 8)
+FORBIDDEN_BYPASS_MAX_URLS = _env("FORBIDDEN_BYPASS_MAX_URLS", 4)
+
+# -- netutil retry/backoff (exploits/netutil.py) ----------------------------
+NETUTIL_MAX_RETRIES = _env("NETUTIL_MAX_RETRIES", 2)
+NETUTIL_BACKOFF_BASE = _env("NETUTIL_BACKOFF_BASE", 0.5)
+NETUTIL_BACKOFF_FACTOR = _env("NETUTIL_BACKOFF_FACTOR", 2.0)
+# Retry only genuinely-transient server errors (502/503/504) by default. 429 is NOT
+# retried by default: the lockout-aware credential modules rely on seeing a 429 once and
+# aborting immediately — auto-retrying a 429 would keep hammering a rate-limited/locked
+# account. Operators who want RFC-7231 Retry-After honoring can opt in via
+# SECTEST_NETUTIL_RETRY_ON_429=true.
+NETUTIL_RETRY_ON_429 = _env("NETUTIL_RETRY_ON_429", False)
+
+
+# ===========================================================================
 # Runtime config overlay + propagation serialization
 # ===========================================================================
 # The runtime overlay allows discovery-driven updates (e.g., replacing default
@@ -964,13 +1011,19 @@ def runtime_set(key: str, value) -> None:
 
 
 def runtime_get(key: str, default=None):
-    """Get a config value with runtime overlay > env-var > module-level default."""
+    """Get a config value with runtime overlay > env-var > module-level default.
+
+    The env-var value is coerced to the type of the module-level default (via _env),
+    so callers that expect an int/float/bool get one — not the raw string (BUG-17).
+    """
     if key in _RUNTIME_OVERLAY:
         return _RUNTIME_OVERLAY[key]
-    env_val = _os.environ.get(f"SECTEST_{key}")
-    if env_val is not None:
-        return env_val
-    return globals().get(key, default)
+    base = globals().get(key, default)
+    if _os.environ.get(f"SECTEST_{key}") is not None:
+        # base carries the type used for coercion; if it is None we cannot infer a type,
+        # so _env returns the raw string (unchanged behavior for untyped keys).
+        return _env(key, base if base is not None else "")
+    return base
 
 
 def export_for_propagation() -> dict:

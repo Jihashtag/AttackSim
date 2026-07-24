@@ -355,14 +355,17 @@ class ScopeGuard:
 
 
 def load_scope_file(path: str) -> List[str]:
-    """Read one allow-list token per line from a file (``#`` comments allowed)."""
+    """Read one allow-list token per line from a file (``#`` comments allowed).
+
+    Raises ``OSError`` if the file cannot be opened. This is deliberate: an unreadable
+    or mistyped ``--scope-file`` path must surface as an error rather than silently
+    yielding an empty allow-list (which, at intrusive+, would disable scope narrowing
+    entirely — BUG-11). An existing-but-empty file still returns ``[]``.
+    """
     out: List[str] = []
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    out.append(line)
-    except OSError:
-        pass
+    with open(path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                out.append(line)
     return out

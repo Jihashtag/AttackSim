@@ -28,6 +28,16 @@ are enforced **in code**, not merely documented.
 - Every intrusive/fuzz request is additionally `authorize`-checked, so an explicitly-scoped
   host that falls outside the narrowing is skipped.
 
+**Empty allow-list is permissive by design.** When no `--scope` narrowing is supplied,
+`authorize()` returns true at intrusive+ on the strength of the operator's confirmation —
+the confirmed target *is* the scope, and there is no per-host allow-list gate. A
+**propagated** instance inherits this same model: a scanner deployed on a foothold operates
+under the operator's original global confirmation and may sweep the foothold's own subnet.
+When matching a hostname against CIDR scope entries, the guard may perform a DNS
+resolution. Operators who require a hard per-host boundary (e.g. to keep a foothold from
+reaching neighbouring production subnets) must pass an explicit `--scope` allow-list; this
+is the intended control for that case.
+
 ## Peak tiers
 
 `proof` and `fuzz` are peaks, not "more dangerous than intrusive". Each is unlocked

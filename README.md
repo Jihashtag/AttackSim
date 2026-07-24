@@ -108,12 +108,15 @@ See [docs/quickstart.md](docs/quickstart.md) for full examples.
 AttackSim is designed for authorised, defensive use. All safety properties are enforced at
 runtime, not just by convention:
 
-- **Read-only by default** — only proof-tier modules (opt-in) create artifacts
-- **Credential-free** — runtime guard scrubs all credential sources
+- **Read-only below intrusive** — `detective`/`active` tiers only observe; `intrusive`+
+  (opt-in) perform authenticated writes, proof reads, and artifact creation
+- **Credential-free** — runtime guard scrubs all credential sources (unless
+  `--keep-credentials` is passed for foothold red-team use)
 - **Confirmation-enforced** — mandatory `--yes` or interactive prompt at intrusive+
   intensity (scope = target-derived; optional `--scope` for narrowing)
 - **Request-budgeted** — global ceiling prevents DoS
-- **Secret-masked** — findings never expose raw secret values
+- **Reports are sensitive** — findings record full evidence verbatim (no automatic
+  secret-redaction layer); treat report artifacts accordingly
 - **Controlled transmission** — git-push-proof and git-cli-proof (opt-in, proof tier)
   may push labelled marker branches as supply-chain access evidence; all other AttackSim
   modules never commit, push, or send externally

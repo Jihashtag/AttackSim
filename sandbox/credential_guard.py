@@ -36,6 +36,10 @@ _CRED_VARS = {
     "ARTIFACTORY_TOKEN", "ARTIFACTORY_USER", "ARTIFACTORY_PASSWORD",
     # GitHub
     "GITHUB_TOKEN", "GH_TOKEN", "GITHUB_APP_PRIVATE_KEY",
+    # GCP
+    "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_CREDENTIALS",
+    # Databases / directory
+    "PGPASSWORD", "MYSQL_PWD", "LDAPRC",
     # Generic
     "DOCKER_AUTH_CONFIG",
 }
@@ -47,6 +51,8 @@ _CRED_PREFIXES = (
     "LINODE_", "VULTR_", "ALIBABA_CLOUD_", "ALICLOUD_",
     "MERAKI_", "F5_", "BIGIP_", "FORTIOS_", "FORTIGATE_",
     "CISCO_ASA_", "ASA_", "ISE_", "DNAC_", "CATALYST_CENTER_",
+    # Azure (CLI + Terraform ARM_*) and GCP tooling
+    "AZURE_", "ARM_", "GOOGLE_", "GCP_", "CLOUDSDK_",
 )
 
 # Vars that point at credential FILES — redirect to an empty/non-existent path
@@ -76,6 +82,8 @@ def audit() -> Dict[str, List[str]]:
         os.path.join(home, ".docker", "config.json"),
         os.path.join(home, ".config", "jfrog", "jfrog-cli.conf"),
         os.path.join(home, ".argocd", "config"),
+        os.path.join(home, ".config", "gcloud", "application_default_credentials.json"),
+        os.path.join(home, ".azure", "accessTokens.json"),
     ]
     file_hits = [p for p in candidate_files if os.path.exists(p)]
     return {"env": env_hits, "files": file_hits}
@@ -103,13 +111,29 @@ def scrub() -> Dict[str, List[str]]:
 
 
 def self_test() -> bool:
-    """True if no credential env vars remain after scrubbing (fail-closed check)."""
+    """True if the guard still holds after scrubbing (fail-closed check).
+
+    Checks both that (a) no credential env var remains, and (b) the redirect vars the
+    guard sets still point where they should — a module could have rewritten
+    AWS_CONFIG_FILE/KUBECONFIG/DOCKER_CONFIG or re-enabled IMDS between scrub() and
+    self_test(), silently re-opening a credential source (V8).
+    """
     remaining = [
         k for k in os.environ
         if (k in _CRED_VARS or any(k.startswith(p) for p in _CRED_PREFIXES))
         and k not in _REDIRECT_VARS
     ]
-    return not remaining
+    if remaining:
+        return False
+    # The file-redirect vars must still point at the empty path.
+    for var in ("AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE", "KUBECONFIG",
+                "DOCKER_CONFIG"):
+        if os.environ.get(var) != _DEVNULL:
+            return False
+    # IMDS role pickup must still be disabled.
+    if os.environ.get("AWS_EC2_METADATA_DISABLED") != "true":
+        return False
+    return True
 
 
 def status() -> str:

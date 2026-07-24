@@ -46,10 +46,15 @@ _PORTSPEC_RE = re.compile(r"^" + _PORTSPEC + r"$")
 # IPv4 CIDR (a.b.c.d/nn), dotted-quad last-octet range (a.b.c.d-e), or full-IP range
 # (a.b.c.d-a.b.c.f), each optionally followed by ``:portspec``.
 _IPV4 = r"\d{1,3}(?:\.\d{1,3}){3}"
+# Loose IPv6 matcher: hex groups and colons with at least one ':' (so it never matches a
+# bare IPv4/hostname). Real validation is deferred to ipaddress.ip_network in parse_hosts.
+_IPV6 = r"[0-9A-Fa-f:]*:[0-9A-Fa-f:]*"
 _NETRANGE_CORE = (
-    r"(?:" + _IPV4 + r"/\d{1,2}"                       # CIDR
+    r"(?:" + _IPV4 + r"/\d{1,2}"                       # IPv4 CIDR
     r"|" + _IPV4 + r"-\d{1,3}"                          # last-octet range
     r"|" + _IPV4 + r"-" + _IPV4 +                       # full-IP range
+    r"|\[" + _IPV6 + r"\]/\d{1,3}"                      # bracketed IPv6 CIDR ([2001:db8::]/64)
+    r"|" + _IPV6 + r"/\d{1,3}"                          # bare IPv6 CIDR (2001:db8::/64)
     r")"
 )
 _NETRANGE_RE = re.compile(
@@ -110,6 +115,7 @@ class Target:
     intensity: Optional[str] = None     # run intensity tier
     spray: bool = False                 # enable default-credential spraying
     canary_url: Optional[str] = None    # operator callback for active SSRF confirm
+    oob_listener: object = None          # sandbox.oob_listener.OOBListener (for was_hit confirm)
     nse_scripts: Optional[str] = None   # opt-in nmap NSE selector
     live_hosts: List[str] = field(default_factory=list)  # discovered by host_sweep
     discovered_services: List[dict] = field(default_factory=list)  # for cred spray
@@ -284,6 +290,9 @@ def parse_hosts(spec: str, *, max_hosts: Optional[int] = None) -> List[str]:
     """
     cap = MAX_HOSTS if max_hosts is None else max_hosts
     spec = spec.strip()
+    # Accept bracketed IPv6 CIDR ([2001:db8::]/64) by stripping the brackets.
+    if spec.startswith("[") and "]" in spec:
+        spec = spec.replace("[", "", 1).replace("]", "", 1)
     hosts: List[str] = []
     try:
         if "/" in spec:
@@ -387,14 +396,32 @@ def _make_email_target(email: str, ports: Optional[str] = None,
     reaches the actual mail server; falls back to the domain itself.
     """
     domain = _email_domain(email)
-    # Best-effort MX lookup via the stdlib (no external dependencies).
+    # Real MX lookup via the project's stdlib DNS helper (no external dependencies).
+    # getaddrinfo() only does A/AAAA resolution — it never returns the MX host, so for
+    # any domain whose MX != A record (the common case, e.g. gmail.com) the probe used
+    # to hit the wrong host (BUG-9). Resolve the lowest-preference MX exchange; fall back
+    # to the domain's A record only if MX resolution yields nothing.
     smtp_host = domain
     try:
-        mx_records = socket.getaddrinfo(domain, 25, proto=socket.IPPROTO_TCP)
-        if mx_records:
-            smtp_host = domain  # use the domain name (MX resolution happens at connect)
-    except OSError:
-        pass
+        from exploits import dnsutil
+        resolvers = dnsutil.system_resolvers() or ["1.1.1.1"]
+        mx_rdata: List[str] = []
+        for rv in resolvers:
+            mx_rdata = dnsutil.resolve(domain, "MX", rv, timeout=4)
+            if mx_rdata:
+                break
+        # rdata is "<pref> <exchange.>"; choose the lowest preference.
+        parsed = []
+        for rd in mx_rdata:
+            parts = rd.split()
+            if len(parts) == 2 and parts[0].isdigit():
+                parsed.append((int(parts[0]), parts[1].rstrip(".")))
+        if parsed:
+            parsed.sort(key=lambda x: x[0])
+            smtp_host = parsed[0][1] or domain
+    except Exception:
+        # Any DNS failure (offline CI, no resolver) → fall back to the domain itself.
+        smtp_host = domain
     smtp_ports = [25, 587, 465]
     if ports:
         try:
@@ -429,8 +456,10 @@ def resolve(
 ) -> Target:
     """Turn CLI inputs into a single concrete :class:`Target`.
 
-    Precedence: explicit local-introspection > network range (--cidr) > repo > url >
-    creds > email > host:port > auto-detected positional > default workspace repo.
+    Precedence: explicit local-introspection > network range (--cidr) > repo > email >
+    creds > url > host:port > auto-detected positional > default workspace repo.
+    (email is resolved before creds so `--email` combined with `--username/--password`
+    yields an SMTP-AUTH target rather than silently dropping the email — BUG-8.)
     """
     has_basic = bool(username or password)
     has_token = bool(jwt or api_key)
@@ -446,6 +475,12 @@ def resolve(
     # 1. Explicit repository (path or URL).
     if repo:
         return _make_repo(repo)
+
+    # 1b. Email address => SMTP hostport target on the mail domain. Handled before plain
+    #     credentials so that `--email` is not silently dropped when username/password are
+    #     also supplied (BUG-8); any creds ride along for SMTP AUTH against the MX.
+    if email:
+        return _make_email_target(email, ports, username=username, password=password)
 
     # 2. Username/password => credentials target (a URL, if given, is what we
     #    validate them against).
@@ -470,10 +505,6 @@ def resolve(
             cred_kind=_infer_cred_kind(username, password, jwt, api_key),
             auth_header=auth_header, auth_scheme=auth_scheme,
         )
-
-    # 4b. Email address => SMTP hostport target on the domain.
-    if email:
-        return _make_email_target(email, ports)
 
     # 5. Explicit host:port (+ optional --ports to override/extend).
     if host_port:
@@ -636,17 +667,23 @@ def resolve_from_dict(entry: dict, *, max_hosts: Optional[int] = None) -> List[T
     auth_header = entry.get("auth_header") or entry.get("authHeader")
     auth_scheme = entry.get("auth_scheme") or entry.get("authScheme")
 
-    # Resolve ports
+    # Resolve ports — a non-numeric port in the JSON must produce a clear TargetError,
+    # not an uncaught ValueError that aborts the whole targets-file load (BUG-23).
     plist: Optional[List[int]] = None
-    if ports_spec:
-        if isinstance(ports_spec, list):
-            plist = sorted(int(p) for p in ports_spec if 0 < int(p) <= 65535)
-        elif isinstance(ports_spec, (int, float)):
-            plist = [int(ports_spec)]
-        else:
-            plist = parse_ports(str(ports_spec))
-    elif port:
-        plist = [int(port)]
+    try:
+        if ports_spec:
+            if isinstance(ports_spec, list):
+                plist = sorted(int(p) for p in ports_spec if 0 < int(p) <= 65535)
+            elif isinstance(ports_spec, (int, float)):
+                plist = [int(ports_spec)]
+            else:
+                plist = parse_ports(str(ports_spec))
+        elif port:
+            plist = [int(port)]
+    except (ValueError, TypeError) as exc:
+        raise TargetError(
+            f"invalid port in targets entry {entry!r}: {exc}"
+        ) from exc
 
     # 1. Email → extract domain for SMTP probing
     if email:

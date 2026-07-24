@@ -80,10 +80,21 @@ class OOBListener:
         return self
 
     def stop(self):
+        # Idempotent: safe to call twice. Also join the serve_forever thread and reset it
+        # so a second stop() (or a stop() after a failed start) does not crash (BUG-20).
         if self._server is not None:
-            self._server.shutdown()
-            self._server.server_close()
+            try:
+                self._server.shutdown()
+                self._server.server_close()
+            except Exception:
+                pass
             self._server = None
+        if self._thread is not None:
+            try:
+                self._thread.join(timeout=5)
+            except RuntimeError:
+                pass
+            self._thread = None
 
     # -- recording / querying ------------------------------------------------
     def record(self, path: str, headers: dict):
@@ -120,6 +131,10 @@ def parse_listen_spec(spec: Optional[str]) -> Tuple[str, int]:
         return (u.hostname or "127.0.0.1", u.port or 0)
     if ":" in spec:
         host, _, port = spec.rpartition(":")
+        port = port.strip()
+        # A non-numeric port (e.g. --oob-listen host:abc) must not raise ValueError (BUG-25).
+        if port and not port.isdigit():
+            raise ValueError(f"invalid --oob-listen port {port!r} in spec {spec!r}")
         return (host or "127.0.0.1", int(port or 0))
     if spec.isdigit():
         return ("127.0.0.1", int(spec))

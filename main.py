@@ -21,6 +21,7 @@ import sys
 TOOL_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, TOOL_DIR)
 
+import config  # noqa: E402
 from exploits import registry  # noqa: E402
 from report import reporter  # noqa: E402
 import targets as targetmod  # noqa: E402
@@ -350,7 +351,7 @@ def main(argv=None) -> int:
     # --- scan profile preset (intensity + parallelism + rate) ----------------
     # A profile only fills values the operator did not set explicitly, so --intensity /
     # --jobs always win over the preset.
-    _cfg = __import__("config")
+    _cfg = config
     profile = getattr(_cfg, "SCAN_PROFILES", {}).get(args.profile or "", {})
     if profile:
         print(f"[*] scan profile: {args.profile} -> {profile}", file=sys.stderr)
@@ -376,7 +377,15 @@ def main(argv=None) -> int:
         intensity = scope_guard.PROOF
     scope_specs = list(args.scope or [])
     if args.scope_file:
-        scope_specs += scope_guard.load_scope_file(args.scope_file)
+        try:
+            scope_specs += scope_guard.load_scope_file(args.scope_file)
+        except OSError as exc:
+            print(f"error: --scope-file {args.scope_file!r} could not be read: {exc}. "
+                  "Refusing to run with an empty scope (would disable scope narrowing).",
+                  file=sys.stderr)
+            if target is not None:
+                target.cleanup()
+            return 2
     guard = scope_guard.ScopeGuard.from_specs(scope_specs, intensity=intensity)
     # v2 scope model: at intrusive+ intensity, require --yes or interactive confirmation
     # (allow-list is optional narrowing, not mandatory).
@@ -395,7 +404,12 @@ def main(argv=None) -> int:
               f"    This will perform multi-request enumeration/guessing against the target.\n"
               f"    Confirm the target is non-production and within your authorized scope.",
               file=sys.stderr)
-        answer = input("    Proceed? [y/N] ").strip().lower()
+        try:
+            answer = input("    Proceed? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            # Fail-closed if stdin closes mid-prompt (BUG-28), matching _confirm_propagate.
+            answer = ""
+            print(file=sys.stderr)
         if answer not in ("y", "yes"):
             print("Aborted by operator.", file=sys.stderr)
             if target is not None:
@@ -511,7 +525,7 @@ def main(argv=None) -> int:
         exit_code = 0
         for t in targets:
             _configure_target(t, args, prove, intensity, guard, session_headers,
-                              canary_url, _budget, scope_guard, rate_limit)
+                              canary_url, _budget, scope_guard, rate_limit, oob=oob)
             selected = _select_modules(t, args, intensity)
             if selected is None:
                 exit_code = max(exit_code, 2)
@@ -527,9 +541,12 @@ def main(argv=None) -> int:
 
 
 def _configure_target(target, args, prove, intensity, guard, session_headers,
-                      canary_url, budget_mod, scope_guard, rate_limit=None) -> None:
+                      canary_url, budget_mod, scope_guard, rate_limit=None, oob=None) -> None:
     """Apply the shared governance/session settings onto a single target."""
     target.prove_access = prove
+    # Expose the shared OOB listener object (if any) so modules like ssrf-probe can
+    # confirm out-of-band callbacks via oob.was_hit(token), not just fire-and-forget.
+    target.oob_listener = oob
     target.prove_access_writes = bool(args.prove_access or args.prove_access_writes)
     target.prove_access_shell = bool(args.prove_access or args.prove_access_shell)
     target.nse_scripts = args.nse_scripts
@@ -551,7 +568,7 @@ def _configure_target(target, args, prove, intensity, guard, session_headers,
     target.propagate = getattr(args, "propagate", False)
     target.propagate_script = getattr(args, "propagate_script", False)
     target.propagate_depth = (args.propagate_depth if getattr(args, "propagate_depth", None) is not None
-                              else getattr(__import__("config"), "PROPAGATE_MAX_DEPTH", 2))
+                              else getattr(config, "PROPAGATE_MAX_DEPTH", 2))
     # True only when this scanner instance was deployed by a parent propagator via
     # --propagated-instance (injected by _build_propagation_args; never set by end users).
     target.is_propagated = bool(getattr(args, "propagated_instance", False))
@@ -577,6 +594,13 @@ def _select_modules(target, args, intensity):
     if args.only:
         wanted = {s.strip() for s in args.only.split(",") if s.strip()}
         selected = registry.by_names(wanted, applicable)
+        # Warn about --only names that match no registered module at all (typos), so the
+        # operator does not believe a mistyped module ran (BUG-12).
+        all_names = {registry.name_of(m) for m in registry.ALL_MODULES}
+        unknown = sorted(wanted - all_names)
+        if unknown:
+            print(f"[!] --only: unknown module name(s) ignored: {', '.join(unknown)}",
+                  file=sys.stderr)
         if not selected:
             print(f"error: no applicable modules matched --only={args.only} "
                   f"for kind={target.kind} at intensity={intensity}.", file=sys.stderr)
@@ -597,7 +621,7 @@ def _load_targets_file(args, default_repo) -> list:
       email, cidr, repo, jwt, api_key, username, password, etc.).
     """
     path = args.targets_file
-    max_targets = getattr(__import__("config"), "TARGETS_FILE_MAX", 256)
+    max_targets = getattr(config, "TARGETS_FILE_MAX", 256)
     out = []
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -621,9 +645,13 @@ def _load_targets_file(args, default_repo) -> list:
                   file=sys.stderr)
             break
         try:
+            # Do NOT forward args.jwt/args.api_key to each legacy line: a global token
+            # makes resolve() take the has_token branch and return a single CREDS target,
+            # silently discarding the per-line host:port/URL (BUG-24). Structured
+            # per-target auth belongs in the JSON format instead.
             t = targetmod.resolve(
                 positional=line, repo=None, url=None,
-                jwt=args.jwt, api_key=args.api_key,
+                jwt=None, api_key=None,
                 username=None, password=None, email=None,
                 host_port=None, ports=args.ports,
                 auth_header=args.auth_header, auth_scheme=args.auth_scheme,
@@ -837,8 +865,11 @@ def _safe_run(mod, target):
     if getattr(result, "exploited", False):
         try:
             _post_exploit_hook(target, result)
-        except Exception:
-            pass
+        except Exception as exc:
+            # Do not silently swallow: a systematically-failing hook would mean pivots are
+            # never recorded and the operator would never know (BUG-5).
+            print(f"[!] post-exploit hook failed for "
+                  f"{getattr(result, 'name', '?')}: {exc!r}", file=sys.stderr)
     return result
 
 
@@ -874,6 +905,15 @@ def _run_modules(mods, target, jobs: int = 1, resume=None) -> list:
                     resume.mark(label, registry.name_of(pending[i]))
             except concurrent.futures.TimeoutError:
                 results[i] = None
+                # A silently-dropped timeout looks like a module that simply found nothing;
+                # tell the operator which module timed out (BUG-6/BUG-19). Python threads
+                # cannot be force-killed, but not-yet-started futures can be cancelled so
+                # the pool does not keep queuing work after a stall.
+                print(f"[!] module {registry.name_of(pending[i])} timed out after 600s "
+                      f"on {label} — result dropped", file=sys.stderr)
+                for other in futmap:
+                    if not other.done():
+                        other.cancel()
     return [r for r in results if r is not None]
 
 
@@ -901,7 +941,7 @@ def _fanout_hostport(target, selected, args, jobs: int = 1, resume=None) -> list
         return []
 
     try:
-        budget = __import__("config").NETRANGE_WALL_BUDGET
+        budget = config.NETRANGE_WALL_BUDGET
     except Exception:
         budget = 600
     ports = list(target.ports or [])
@@ -924,6 +964,7 @@ def _fanout_hostport(target, selected, args, jobs: int = 1, resume=None) -> list
         sub.intensity = getattr(target, "intensity", None)
         sub.spray = getattr(target, "spray", False)
         sub.canary_url = getattr(target, "canary_url", None)
+        sub.oob_listener = getattr(target, "oob_listener", None)
         sub.cookies = getattr(target, "cookies", None)
         sub.session_headers = getattr(target, "session_headers", {}) or {}
         sub.proxy = getattr(target, "proxy", None)
@@ -942,6 +983,7 @@ def _inherit_governance(sub, parent) -> None:
     sub.intensity = getattr(parent, "intensity", None)
     sub.spray = getattr(parent, "spray", False)
     sub.canary_url = getattr(parent, "canary_url", None)
+    sub.oob_listener = getattr(parent, "oob_listener", None)
     sub.cookies = getattr(parent, "cookies", None)
     sub.session_headers = getattr(parent, "session_headers", {}) or {}
     sub.proxy = getattr(parent, "proxy", None)
@@ -997,7 +1039,6 @@ def _push_url_hostport_companion(target) -> None:
     """
     if getattr(target, "_url_companion_pushed", False):
         return
-    target._url_companion_pushed = True
     url = getattr(target, "url", None)
     if not url:
         return
@@ -1011,6 +1052,10 @@ def _push_url_hostport_companion(target) -> None:
     pivot_targets = getattr(target, "pivot_targets", None)
     if pivot_targets is None:
         return
+    # Only mark as pushed once we have actually decided to push (host present, in scope,
+    # pivot list initialised). Setting the flag before these checks would permanently
+    # suppress the companion push on any later, legitimate retry (BUG-30).
+    target._url_companion_pushed = True
     pivot_targets.append({
         "kind": "hostport",
         "host": host,
@@ -1034,7 +1079,7 @@ def _expand_subnet_spec(spec, guard, deadline, target=None) -> list:
     import time
     from sandbox import relay as relay_mod
     from sandbox import ledger as ledger_mod
-    _cfg = __import__("config")
+    _cfg = config
     cidr = spec.get("cidr")
     via = spec.get("via", "?")
     reached_from = spec.get("reached_from") or via
@@ -1108,7 +1153,7 @@ def _fanout_pivots(target, args, jobs: int = 1, resume=None) -> list:
     pending = list(getattr(target, "pivot_targets", []) or [])
     if not pending:
         return []
-    _cfg = __import__("config")
+    _cfg = config
     max_depth = getattr(_cfg, "PIVOT_MAX_DEPTH", 2)
     budget = getattr(_cfg, "PIVOT_WALL_BUDGET", 600)
     run_intensity = getattr(target, "intensity", None)
@@ -1304,7 +1349,7 @@ def _build_propagation_args(target, host: str) -> list:
     if getattr(target, "propagate_script", False):
         current_depth = getattr(target, "propagate_depth", None)
         if current_depth is None:
-            current_depth = getattr(__import__("config"), "PROPAGATE_MAX_DEPTH", 2)
+            current_depth = getattr(config, "PROPAGATE_MAX_DEPTH", 2)
         new_depth = current_depth - 1
         if new_depth > 0:
             args += ["--propagate-script", "--propagate-depth", str(new_depth)]
@@ -1574,7 +1619,7 @@ def _infer_services_from_findings(results: list, target) -> list:
         if kw in _SERVICE_TYPE_VERSIONS and kw not in seen:
             seen.add(kw)
             svc = dict(_SERVICE_TYPE_VERSIONS[kw])
-            svc["inferred"] = "true"
+            svc["inferred"] = True
             out.append(svc)
     return out[:5]
 
@@ -1856,7 +1901,21 @@ def _run(target, selected, args, jobs: int = 1, resume=None) -> int:
 
     color = sys.stdout.isatty() and not args.no_color
     label = target.describe()
-    exit_code = reporter.render_console(results, label, llm_text, color, args.fail_on)
+
+    # I6: the historical default ("any exploited module fails the run") is too sensitive
+    # for CI against live targets — a single INFO/MEDIUM path-probe hit fails the pipeline.
+    # When --fail-on is not set explicitly, default live targets (url/hostport/netrange/
+    # cloud) to MEDIUM; keep the strict "any" behaviour for repo/local introspection,
+    # where any exploited finding is meaningful.
+    effective_fail_on = args.fail_on
+    if effective_fail_on is None and target is not None:
+        if getattr(target, "kind", None) in (
+                targetmod.URL, targetmod.HOSTPORT, targetmod.NETRANGE, targetmod.CLOUD):
+            effective_fail_on = "MEDIUM"
+            print("[*] --fail-on not set: defaulting to MEDIUM for live target "
+                  "(pass --fail-on to override; repo/local default to 'any').",
+                  file=sys.stderr)
+    exit_code = reporter.render_console(results, label, llm_text, color, effective_fail_on)
 
     # Baseline comparison (optional): classify findings as new/fixed/unchanged and,
     # with --fail-on-new-only, base the exit code purely on NEW findings.
@@ -1868,11 +1927,19 @@ def _run(target, selected, args, jobs: int = 1, resume=None) -> int:
             diff = reporter.diff_against_baseline(results, baseline)
             reporter.render_diff(diff, color)
             if args.fail_on_new_only:
-                exit_code = 1 if reporter.gate_new_only(diff, args.fail_on) else 0
+                exit_code = 1 if reporter.gate_new_only(diff, effective_fail_on) else 0
 
+    # The JSON artifact is the primary machine-readable output. If it fails to write, the
+    # run must not report success (exit 0) — a CI consumer would see a green run with no
+    # report (BUG-16). Secondary formats (markdown/sarif/html) are best-effort.
+    if args.json:
+        try:
+            reporter.write_json(results, label, args.json, llm_text)
+            print(f"[*] JSON artifact: {args.json}", file=sys.stderr)
+        except Exception as exc:
+            print(f"[!] failed to write JSON artifact {args.json!r}: {exc!r}", file=sys.stderr)
+            exit_code = max(exit_code, 2)
     try:
-        reporter.write_json(results, label, args.json, llm_text)
-        print(f"[*] JSON artifact: {args.json}", file=sys.stderr)
         if args.markdown:
             reporter.write_markdown_with_chains(results, label, args.markdown, llm_text)
             print(f"[*] Markdown report: {args.markdown}", file=sys.stderr)
