@@ -69,9 +69,9 @@ HTTP_TIMEOUT = 8           # per-request socket timeout (seconds)
 HTTP_MAX_REDIRECTS = 5     # cap redirect chains (avoid loops / SSRF pivots)
 HTTP_TOTAL_BUDGET = 30     # hard wall-clock budget for one module (seconds)
 
-# -- Phase 1-2: Advanced recon (discovery + metadata extraction) ----------
+# -- Advanced recon (discovery + metadata extraction) ----------
 
-# Phase 1: Web surface + cloud storage discovery
+# Web surface + cloud storage discovery
 SITEMAP_FETCH_TIMEOUT = 10              # timeout per sitemap fetch (seconds)
 SITEMAP_MAX_URLS = 5000                 # max URLs to process per sitemap
 SITEMAP_MAX_REDIRECTS = 3               # max HTTP redirects to follow
@@ -80,14 +80,14 @@ STORAGE_BRUTE_MAX = 1000                # max bucket names to attempt (brute-for
 CREDENTIAL_PROPAGATION_ENABLED = True   # enable credential routing to aggressive modules
 CREDENTIAL_ROUTE_INTENSITY = "intrusive"  # min intensity to route credentials
 
-# Phase 2: API and cloud metadata extraction
+# API and cloud metadata extraction
 API_METADATA_MAX_PARAMETERS = 200       # max parameters to extract per endpoint
 API_METADATA_MAX_ENDPOINTS = 60         # max endpoints to analyze
 CLOUD_METADATA_EXTRACTION_ENABLED = True  # enable infrastructure metadata parsing
 CLOUD_METADATA_MAX_ROLES = 100          # max IAM roles to track
 CLOUD_METADATA_MAX_INSTANCES = 500      # max instances to track
 
-# Phase 3: Credential routing and lateral movement planning
+# Credential routing and lateral movement planning
 CREDENTIAL_ROUTING_INTEGRATION_ENABLED = True  # enable credential → module routing
 CREDENTIAL_ESCALATION_MAX_DEPTH = 5     # max escalation hops (default propagation depth)
 CREDENTIAL_QUEUE_RERUNS = True          # auto-queue module re-runs on credential discovery
@@ -398,7 +398,7 @@ SARIF_TOOL_URI = "https://example.invalid/security_test"
 
 
 # ===========================================================================
-# Detective-tier recon modules (Phase 1)
+# Detective-tier recon modules
 # ===========================================================================
 # -- DNS recon (exploits/dns_recon.py + dnsutil.py; detective, read-only) ----
 # Single, env-overridable definition (SECTEST_DNS_TIMEOUT). Previously this was shadowed
@@ -439,7 +439,7 @@ ETCD_PORTS = (2379, 2380, 4001)
 
 
 # ===========================================================================
-# Cross-cutting governors (Phase 2: global request budget)
+# Cross-cutting governors (global request budget)
 # ===========================================================================
 # A single run-wide ceiling enforced on top of each module's own caps (defence in
 # depth). The effective limit on any module is the minimum of its local cap and this
@@ -450,7 +450,7 @@ GLOBAL_WALL_BUDGET = 1800      # hard wall-clock budget for the whole run (secon
 
 
 # ===========================================================================
-# Phase 3: active confirmation modules + OOB listener
+# Active confirmation modules + OOB listener
 # ===========================================================================
 # -- SSTI confirmation (exploits/ssti_confirm.py; intrusive) -----------------
 SSTI_TIMEOUT = 6

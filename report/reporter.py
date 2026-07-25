@@ -7,7 +7,7 @@ import sys
 import time
 from typing import List, Optional
 
-from exploits.base import ExploitResult, SEVERITY_ORDER
+from exploits.base import ExploitResult, SEVERITY_ORDER, format_evidence
 
 _COLORS = {
     "CRITICAL": "\033[1;37;41m", "HIGH": "\033[1;31m", "MEDIUM": "\033[1;33m",
@@ -64,7 +64,7 @@ def render_console(results: List[ExploitResult], target: str, llm_text: Optional
             print(f"   {tag} {f.location}")
             print(f"            {f.title}")
             if f.evidence:
-                print(f"            {_c('DIM', 'evidence: ' + f.evidence, color)}")
+                print(f"            {_c('DIM', 'evidence: ' + format_evidence(f.evidence), color)}")
             refs = list(getattr(f, "references", []) or [])
             if getattr(f, "cwe", ""):
                 refs = [f.cwe] + refs
@@ -223,7 +223,7 @@ def write_sarif(results: List[ExploitResult], target: str, path: str) -> None:
             rid = _finding_id(r.name, f)
             detail = f.detail
             if f.evidence:
-                detail += f"\nEvidence: {f.evidence}"
+                detail += f"\nEvidence: {format_evidence(f.evidence)}"
             sarif_results.append({
                 "ruleId": rid,
                 "level": _SARIF_LEVEL.get(f.severity, "note"),
@@ -299,7 +299,7 @@ def write_html(results: List[ExploitResult], target: str, path: str,
                 f"{f.severity}</span> <strong>{_html_escape(f.title)}</strong>"
                 f"<div class='loc'>{_html_escape(f.location)}</div>"
                 f"<div class='det'>{_html_escape(f.detail)}</div>"
-                + (f"<div class='ev'>evidence: {_html_escape(f.evidence)}</div>"
+                + (f"<div class='ev'>evidence: {_html_escape(format_evidence(f.evidence))}</div>"
                    if f.evidence else "")
                 + (f"<div class='ref'>refs: {_html_escape(', '.join(refs))}</div>"
                    if refs else "")
@@ -457,7 +457,8 @@ def _render_mermaid_chain(results: List[ExploitResult]) -> str:
         if r.name != "proof-ledger":
             continue
         for f in (r.findings or []):
-            if "reached from" in (f.title or "").lower() and f.evidence:
+            if ("reached from" in (f.title or "").lower()
+                    and isinstance(f.evidence, str) and f.evidence):
                 parts = f.evidence.split()
                 for part in parts:
                     if "reached_from=" in part:
@@ -508,7 +509,7 @@ def write_markdown_with_chains(results: List[ExploitResult], target: str, path: 
         for chain in chains:
             lines.append(
                 f"| {chain['path_description']} | {chain['severity']} | "
-                f"`{chain.get('evidence', '')[:100]}` |")
+                f"`{format_evidence(chain.get('evidence', ''))[:100]}` |")
 
     # Check for "secure" (probed but not reachable) resources
     secure_resources = []

@@ -62,6 +62,8 @@ import threading
 import time
 from typing import Dict, List, Optional, Tuple
 
+from exploits.base import format_evidence
+
 try:
     import fcntl
     import termios
@@ -786,7 +788,7 @@ def re_verify_auto(module_name: str, finding: dict) -> None:
             for line in rfinding.detail.splitlines():
                 print(_cc(_DIM, f"              {line}"))
         if rfinding.evidence:
-            print(_cc(_CYN, f"    Evidence:   {rfinding.evidence[:300]}"))
+            print(_cc(_CYN, f"    Evidence:   {format_evidence(rfinding.evidence)[:300]}"))
     print()
 
 
@@ -1789,7 +1791,7 @@ def _run_module_live(mod_name: str, host: str, port: int, url: str = "") -> None
             for line in f.detail.splitlines()[:3]:
                 print(_cc(_DIM, f"              {line}"))
         if f.evidence:
-            print(_cc(_CYN, f"    Evidence:   {f.evidence[:200]}"))
+            print(_cc(_CYN, f"    Evidence:   {format_evidence(f.evidence)[:200]}"))
     print()
 
 
@@ -1993,7 +1995,7 @@ def _run_dos_demo(host: str, port: int, cwe: str, tags: list, url: str) -> None:
                     for dl in f.detail.splitlines()[:4]:
                         print(_cc(_DIM, f"             {dl}"))
                 if f.evidence:
-                    print(_cc(_CYN, f"  Evidence:   {f.evidence[:180]}"))
+                    print(_cc(_CYN, f"  Evidence:   {format_evidence(f.evidence)[:180]}"))
         except (ImportError, Exception) as exc:
             print(f"  [!] slowloris module error ({exc}) — using inline flood script")
             _run_dos_flood_script(host, port, demo_conns, demo_hold)
