@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from typing import Optional
 
 # Make the toolkit importable when invoked as `python main.py` from anywhere.
 TOOL_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1543,9 +1544,10 @@ def _propagate_to_foothold(spec: dict, target, *,
                 "port": relay_spec.get("port", 5555),
                 "serial": relay_spec.get("serial", ""),
             }
+            # Timeout is left to the transport, which applies its own
+            # _PROPAGATE_TIMEOUT default (consistent with every other branch).
             ok, output = adb_transport.deliver_and_exec(
-                foothold, archive, args_list,
-                timeout=_PROPAGATE_TIMEOUT if "_PROPAGATE_TIMEOUT" in dir() else 120)
+                foothold, archive, args_list)
         elif relay_type in ("aws-ssm", "gcp-oslogin", "azure-runcommand"):
             # Cloud API-based propagation
             from sandbox.propagate_transport import CloudStorageTransport
